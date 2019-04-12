@@ -25,8 +25,8 @@ import (
 	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/grafana/loki/pkg/logentry"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/promtail/api"
 	"github.com/grafana/loki/pkg/promtail/config"
 	"github.com/grafana/loki/pkg/promtail/scrape"
 	"github.com/grafana/loki/pkg/promtail/targets"
@@ -489,9 +489,17 @@ func buildTestConfig(t *testing.T, positionsFileName string, logDirName string) 
 		},
 	}
 
+	stages := []logentry.PipelineStage{
+		{
+			"regex": map[string]interface{}{
+				"expr": "./*",
+			},
+		},
+	}
+
 	scrapeConfig := scrape.Config{
 		JobName:                "",
-		EntryParser:            api.Raw,
+		PipelineStages:         stages,
 		RelabelConfigs:         nil,
 		ServiceDiscoveryConfig: serviceConfig,
 	}
