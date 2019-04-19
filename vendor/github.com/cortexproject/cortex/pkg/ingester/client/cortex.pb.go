@@ -8,14 +8,15 @@ import (
 	context "context"
 	encoding_binary "encoding/binary"
 	fmt "fmt"
-	_ "github.com/gogo/protobuf/gogoproto"
-	proto "github.com/gogo/protobuf/proto"
-	grpc "google.golang.org/grpc"
 	io "io"
 	math "math"
 	reflect "reflect"
 	strconv "strconv"
 	strings "strings"
+
+	_ "github.com/gogo/protobuf/gogoproto"
+	proto "github.com/gogo/protobuf/proto"
+	grpc "google.golang.org/grpc"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -4486,6 +4487,11 @@ func (this *Metric) String() string {
 	if this == nil {
 		return "nil"
 	}
+	repeatedStringForLabels := "[]LabelPair{"
+	for _, f := range this.Labels {
+		repeatedStringForLabels += strings.Replace(strings.Replace(f.String(), "LabelPair", "LabelPair", 1), `&`, ``, 1) + ","
+	}
+	repeatedStringForLabels += "}"
 	s := strings.Join([]string{`&Metric{`,
 		`Labels:` + fmt.Sprintf("%v", this.Labels) + `,`,
 		`}`,

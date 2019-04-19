@@ -13,9 +13,11 @@ services:
       - loki
 
   promtail:
-    image: grafana/promtail:latest
+    build: ../cmd/promtail/
     volumes:
       - /var/log:/var/log
+      - /tmp/log:/tmp/log
+      - /Users/ctovena/go/src/github.com/grafana/loki/cmd/promtail/promtail-docker-config.yaml:/etc/promtail/docker-config.yaml
     command: -config.file=/etc/promtail/docker-config.yaml
     networks:
       - loki
