@@ -203,3 +203,26 @@ clean:
 	$(SUDO) docker rmi $(IMAGE_NAMES) >/dev/null 2>&1 || true
 	rm -rf $(UPTODATE_FILES) $(EXES) .cache
 	go clean ./...
+
+
+KIND_PROFILE := kind
+KSONNET_APP_DIR := .ksonnet-kind
+
+kind-create-cluster:
+	kind create cluster --name $(KIND_PROFILE)
+
+kind-clean:
+	kind delete cluster --name $(KIND_PROFILE)
+
+kind-install:
+	-rm -Rf $(KSONNET_APP_DIR)
+	ks init --kubeconfig=$(shell kind get kubeconfig-path --name="$(KIND_PROFILE)") --dir=$(KSONNET_APP_DIR) loki
+	cd $(KSONNET_APP_DIR) && jb init && jb install github.com/grafana/loki/production/ksonnet/promtail github.com/grafana/loki/production/ksonnet/loki
+	cp -R production/ksonnet/loki $(KSONNET_APP_DIR)/vendor/
+	cp -R production/ksonnet/promtail $(KSONNET_APP_DIR)/vendor/
+	cp tools/kind.jsonnet  $(KSONNET_APP_DIR)/environments/default/main.jsonnet
+	cd $(KSONNET_APP_DIR) && ks apply default --kubeconfig=$(shell kind get kubeconfig-path --name="$(KIND_PROFILE)")
+
+test-ks:
+	cp tools/kind.jsonnet  $(KSONNET_APP_DIR)/environments/default/main.jsonnet
+	cd $(KSONNET_APP_DIR) && ks show default > test.yaml
