@@ -4,12 +4,20 @@ server:
   http_listen_port: 3100
 
 ingester:
+  log_metrics:
+    path: /logmetrics
   lifecycler:
     address: 127.0.0.1
     ring:
       store: inmemory
       replication_factor: 1
   chunk_idle_period: 15m
+
+# querier:
+#   log_metrics:
+#     host: localhost:9090
+#     scheme: http
+
 
 schema_config:
   configs:

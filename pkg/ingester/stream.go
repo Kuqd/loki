@@ -34,6 +34,8 @@ var (
 
 		Buckets: prometheus.LinearBuckets(4096, 2048, 6),
 	})
+
+	logCounterOpts = prometheus.CounterOpts{}
 )
 
 func init() {
@@ -49,6 +51,8 @@ type stream struct {
 	fp        model.Fingerprint
 	labels    []client.LabelAdapter
 	blockSize int
+
+	counter prometheus.Counter
 }
 
 type chunkDesc struct {
@@ -59,11 +63,12 @@ type chunkDesc struct {
 	lastUpdated time.Time
 }
 
-func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int) *stream {
+func newStream(fp model.Fingerprint, labels []client.LabelAdapter, blockSize int, counter prometheus.Counter) *stream {
 	return &stream{
 		fp:        fp,
 		labels:    labels,
 		blockSize: blockSize,
+		counter:   counter,
 	}
 }
 
@@ -93,6 +98,8 @@ func (s *stream) Push(_ context.Context, entries []logproto.Entry) error {
 		}
 		if err := chunk.chunk.Append(&entries[i]); err != nil {
 			appendErr = err
+		} else {
+			s.counter.Inc()
 		}
 		chunk.lastUpdated = entries[i].Timestamp
 	}

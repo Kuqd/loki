@@ -10,6 +10,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util/validation"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 
@@ -128,6 +129,9 @@ func (t *Loki) initQuerier() (err error) {
 	httpMiddleware := middleware.Merge(
 		t.httpAuthMiddleware,
 	)
+	t.server.HTTP.Handle("/api/prom/metrics/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryMetricsHandler)))
+	t.server.HTTP.Handle("/api/prom/metrics/query_range", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryMetricsHandler)))
+	t.server.HTTP.Handle("/api/prom/metrics/series", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryMetricsHandler)))
 	t.server.HTTP.Handle("/api/prom/query", httpMiddleware.Wrap(http.HandlerFunc(t.querier.QueryHandler)))
 	t.server.HTTP.Handle("/api/prom/label", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
 	t.server.HTTP.Handle("/api/prom/label/{name}/values", httpMiddleware.Wrap(http.HandlerFunc(t.querier.LabelHandler)))
@@ -147,6 +151,7 @@ func (t *Loki) initIngester() (err error) {
 	grpc_health_v1.RegisterHealthServer(t.server.GRPC, t.ingester)
 	t.server.HTTP.Path("/ready").Handler(http.HandlerFunc(t.ingester.ReadinessHandler))
 	t.server.HTTP.Path("/flush").Handler(http.HandlerFunc(t.ingester.FlushHandler))
+	t.server.HTTP.Path(t.cfg.Ingester.LogMetricsConfig.Path).Handler(promhttp.HandlerFor(t.ingester.LogMetrics(), promhttp.HandlerOpts{}))
 	return
 }
 

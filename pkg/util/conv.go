@@ -21,3 +21,12 @@ func ToClientLabels(labels string) ([]client.LabelAdapter, error) {
 	}
 	return pairs, nil
 }
+
+// LabelValues returns value of all labels
+func LabelValues(labels []client.LabelAdapter) []string {
+	values := make([]string, len(labels))
+	for i, l := range labels {
+		values[i] = l.Value
+	}
+	return values
+}

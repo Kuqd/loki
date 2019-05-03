@@ -33,6 +33,12 @@ type Config struct {
 	RetainPeriod      time.Duration `yaml:"chunk_retain_period"`
 	MaxChunkIdle      time.Duration `yaml:"chunk_idle_period"`
 	BlockSize         int           `yaml:"chunk_block_size"`
+
+	LogMetricsConfig LogMetricsConfig `yaml:"log_metrics"`
+}
+
+type LogMetricsConfig struct {
+	Path string `yaml:"path"`
 }
 
 // RegisterFlags registers the flags.
@@ -45,6 +51,7 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.DurationVar(&cfg.RetainPeriod, "ingester.chunks-retain-period", 15*time.Minute, "")
 	f.DurationVar(&cfg.MaxChunkIdle, "ingester.chunks-idle-period", 30*time.Minute, "")
 	f.IntVar(&cfg.BlockSize, "ingester.chunks-block-size", 256*1024, "")
+	f.StringVar(&cfg.LogMetricsConfig.Path, "ingester.log-metrics.path", "/logmetrics", "path to expose metrics from logs")
 }
 
 // Ingester builds chunks for incoming log streams.
@@ -64,6 +71,8 @@ type Ingester struct {
 	// pick a queue.
 	flushQueues     []*util.PriorityQueue
 	flushQueuesDone sync.WaitGroup
+
+	logmetrics *prometheus.Registry
 }
 
 // ChunkStore is the interface we need to store chunks.
@@ -79,6 +88,7 @@ func New(cfg Config, store ChunkStore) (*Ingester, error) {
 		store:       store,
 		quit:        make(chan struct{}),
 		flushQueues: make([]*util.PriorityQueue, cfg.ConcurrentFlushes),
+		logmetrics:  prometheus.NewRegistry(),
 	}
 
 	i.flushQueuesDone.Add(cfg.ConcurrentFlushes)
@@ -97,6 +107,10 @@ func New(cfg Config, store ChunkStore) (*Ingester, error) {
 	go i.loop()
 
 	return i, nil
+}
+
+func (i *Ingester) LogMetrics() prometheus.Gatherer {
+	return i.logmetrics
 }
 
 func (i *Ingester) loop() {
@@ -156,7 +170,7 @@ func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	defer i.instancesMtx.Unlock()
 	inst, ok = i.instances[instanceID]
 	if !ok {
-		inst = newInstance(instanceID, i.cfg.BlockSize)
+		inst = newInstance(instanceID, i.cfg.BlockSize, i.logmetrics)
 		i.instances[instanceID] = inst
 	}
 	return inst

@@ -52,9 +52,11 @@ type instance struct {
 	streamsRemovedTotal prometheus.Counter
 
 	blockSize int
+
+	logmetrics *prometheus.Registry
 }
 
-func newInstance(instanceID string, blockSize int) *instance {
+func newInstance(instanceID string, blockSize int, logmetrics *prometheus.Registry) *instance {
 	return &instance{
 		streams:    map[model.Fingerprint]*stream{},
 		index:      index.New(),
@@ -63,7 +65,8 @@ func newInstance(instanceID string, blockSize int) *instance {
 		streamsCreatedTotal: streamsCreatedTotal.WithLabelValues(instanceID),
 		streamsRemovedTotal: streamsRemovedTotal.WithLabelValues(instanceID),
 
-		blockSize: blockSize,
+		blockSize:  blockSize,
+		logmetrics: logmetrics,
 	}
 }
 
@@ -82,12 +85,29 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 		fp := client.FastFingerprint(labels)
 		stream, ok := i.streams[fp]
 		if !ok {
-			stream = newStream(fp, labels, i.blockSize)
+			constLabels := client.FromLabelAdaptersToLabels(labels).Map()
+			constLabels["_instance_"] = i.instanceID
+			if filename, ok := constLabels["__filename__"]; ok {
+				delete(constLabels, "__filename__")
+				constLabels["_filename_"] = filename
+			}
+			counter := prometheus.NewCounter(prometheus.CounterOpts{
+				ConstLabels: constLabels,
+				Help:        "The total count of log entries received",
+				Name:        "log_count",
+			})
+
+			err := i.logmetrics.Register(counter)
+			if err != nil {
+				//todo log could not register log metrics for stream.
+				return err
+			}
+
+			stream = newStream(fp, labels, i.blockSize, counter)
 			i.index.Add(labels, fp)
 			i.streams[fp] = stream
 			i.streamsCreatedTotal.Inc()
 		}
-
 		if err := stream.Push(ctx, s.Entries); err != nil {
 			appendErr = err
 			continue

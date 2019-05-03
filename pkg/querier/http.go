@@ -3,6 +3,7 @@ package querier
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -93,6 +94,23 @@ func httpRequestToQueryRequest(httpRequest *http.Request) (*logproto.QueryReques
 	}
 
 	return &queryRequest, nil
+}
+
+// QueryMetricsHandler is a http.HandlerFunc for metrics queries.
+func (q *Querier) QueryMetricsHandler(w http.ResponseWriter, r *http.Request) {
+	r.Host = "localhost:9090"
+	// send query to a prometheus or a cortex.
+	resp, err := http.DefaultTransport.RoundTrip(r)
+	if err != nil {
+		server.WriteError(w, err)
+		return
+	}
+	hs := w.Header()
+	for h, vs := range resp.Header {
+		hs[h] = vs
+	}
+	_, _ = io.Copy(w, resp.Body)
+	resp.Body.Close()
 }
 
 // QueryHandler is a http.HandlerFunc for queries.
