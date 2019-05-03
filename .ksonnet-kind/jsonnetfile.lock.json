@@ -1,0 +1,44 @@
+{
+    "dependencies": [
+        {
+            "name": "promtail",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/loki",
+                    "subdir": "production/ksonnet/promtail"
+                }
+            },
+            "version": "fc389b6ab5bcc58da38d57f1c452519d71701937"
+        },
+        {
+            "name": "ksonnet-util",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/jsonnet-libs",
+                    "subdir": "ksonnet-util"
+                }
+            },
+            "version": "6c6f20cbef5018affdea9757db63fb574d3f3bf6"
+        },
+        {
+            "name": "loki",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/loki",
+                    "subdir": "production/ksonnet/loki"
+                }
+            },
+            "version": "fc389b6ab5bcc58da38d57f1c452519d71701937"
+        },
+        {
+            "name": "consul",
+            "source": {
+                "git": {
+                    "remote": "https://github.com/grafana/jsonnet-libs",
+                    "subdir": "consul"
+                }
+            },
+            "version": "6c6f20cbef5018affdea9757db63fb574d3f3bf6"
+        }
+    ]
+}

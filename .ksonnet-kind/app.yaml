@@ -1,0 +1,11 @@
+apiVersion: 0.0.1
+kind: ksonnet.io/app
+name: loki
+registries:
+  incubator:
+    gitVersion:
+      commitSha: 2a6bd08597dde82a3d7eb7084585b3383ba6efe0
+      refSpec: master
+    protocol: github
+    uri: github.com/ksonnet/parts/tree/master/incubator
+version: 0.0.1
