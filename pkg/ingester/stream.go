@@ -34,8 +34,6 @@ var (
 
 		Buckets: prometheus.LinearBuckets(4096, 2048, 6),
 	})
-
-	logCounterOpts = prometheus.CounterOpts{}
 )
 
 func init() {
