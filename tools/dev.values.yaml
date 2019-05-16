@@ -17,6 +17,17 @@ prometheus:
 promtail:
   image:
     pullPolicy: Never
+  pipelineStages:
+  - docker: {}
+  - regex:
+      expression: (level|lvl|severity)=(?P<level>\w*)
+      labels:
+        level:
+  - json:
+      labels:
+        level: 
+          source: level || lvl || severity
+      match: '{level=""}'
 
 loki:
   image:
