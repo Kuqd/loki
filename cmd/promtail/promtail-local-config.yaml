@@ -6,14 +6,18 @@ positions:
   filename: /tmp/positions.yaml
 
 clients:
-  - url: http://localhost:3100/api/prom/push
+  - url: http://localhost:3200/api/prom/push
 
 scrape_configs:
 - job_name: system
-  entry_parser: raw
+  pipeline_stages:
+    - json:
+        labels:
+          level:
+          component:
   static_configs:
   - targets:
       - localhost
     labels:
       job: varlogs
-      __path__: /var/log/*log
+      __path__: /var/log/myproject/*log
