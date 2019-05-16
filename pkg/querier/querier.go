@@ -122,18 +122,18 @@ func (q *Querier) Query(ctx context.Context, req *logproto.QueryRequest) (*logpr
 }
 
 func (q *Querier) queryIngesters(ctx context.Context, req *logproto.QueryRequest) ([]iter.EntryIterator, error) {
-	clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
-		return client.Query(ctx, req)
-	})
-	if err != nil {
-		return nil, err
-	}
+	// clients, err := q.forAllIngesters(func(client logproto.QuerierClient) (interface{}, error) {
+	// 	return client.Query(ctx, req)
+	// })
+	// if err != nil {
+	// 	return nil, err
+	// }
 
-	iterators := make([]iter.EntryIterator, len(clients))
-	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
-	}
-	return iterators, nil
+	// iterators := make([]iter.EntryIterator, len(clients))
+	// for i := range clients {
+	// 	iterators[i] = iter.NewQueryClientIterator(clients[i].(logproto.Querier_QueryClient), req.Direction)
+	// }
+	return nil, nil
 }
 
 // Label does the heavy lifting for a Label query.

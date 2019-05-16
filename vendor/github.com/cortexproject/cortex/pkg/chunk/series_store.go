@@ -185,7 +185,6 @@ func (c *seriesStore) GetChunkRefs(ctx context.Context, from, through model.Time
 		level.Error(log).Log("op", "convertChunkIDsToChunks", "err", err)
 		return nil, nil, err
 	}
-
 	chunks = filterChunksByTime(from, through, chunks)
 	level.Debug(log).Log("chunks-post-filtering", len(chunks))
 	chunksPerQuery.Observe(float64(len(chunks)))
