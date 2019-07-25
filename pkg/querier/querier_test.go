@@ -5,8 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/grafana/loki/pkg/logql"
-
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/prometheus/common/model"
@@ -20,54 +18,6 @@ const (
 	// Custom query timeout used in tests
 	queryTimeout = 12 * time.Second
 )
-
-func TestQuerier_Query_QueryTimeoutConfigFlag(t *testing.T) {
-	query := &logproto.QueryRequest{
-		Selector:  "{type=\"test\"}",
-		Limit:     10,
-		Start:     time.Now().Add(-1 * time.Minute),
-		End:       time.Now(),
-		Direction: logproto.FORWARD,
-	}
-	request := logql.SelectParams{
-		QueryRequest: query,
-	}
-
-	store := newStoreMock()
-	store.On("LazyQuery", mock.Anything, mock.Anything).Return(mockStreamIterator(), nil)
-
-	queryClient := newQueryClientMock()
-	queryClient.On("Recv").Return(mockQueryResponse([]*logproto.Stream{mockStream()}), nil)
-
-	ingesterClient := newQuerierClientMock()
-	ingesterClient.On("Query", mock.Anything, query, mock.Anything).Return(queryClient, nil)
-
-	q, err := newQuerier(
-		mockQuerierConfig(),
-		mockIngesterClientConfig(),
-		newIngesterClientMockFactory(ingesterClient),
-		mockReadRingWithOneActiveIngester(),
-		store)
-	require.NoError(t, err)
-
-	ctx := user.InjectOrgID(context.Background(), "test")
-	_, err = q.Select(ctx, request)
-	require.NoError(t, err)
-
-	calls := ingesterClient.GetMockedCallsByMethod("Query")
-	assert.Equal(t, 1, len(calls))
-	deadline, ok := calls[0].Arguments.Get(0).(context.Context).Deadline()
-	assert.True(t, ok)
-	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
-
-	calls = store.GetMockedCallsByMethod("LazyQuery")
-	assert.Equal(t, 1, len(calls))
-	deadline, ok = calls[0].Arguments.Get(0).(context.Context).Deadline()
-	assert.True(t, ok)
-	assert.WithinDuration(t, deadline, time.Now().Add(queryTimeout), 1*time.Second)
-
-	store.AssertExpectations(t)
-}
 
 func TestQuerier_Label_QueryTimeoutConfigFlag(t *testing.T) {
 	startTime := time.Now().Add(-1 * time.Minute)
