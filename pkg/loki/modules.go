@@ -14,6 +14,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/go-kit/kit/log/level"
+	httpgrpc_server "github.com/weaveworks/common/httpgrpc/server"
 	"github.com/weaveworks/common/middleware"
 	"github.com/weaveworks/common/server"
 	"google.golang.org/grpc/health/grpc_health_v1"
@@ -150,7 +151,7 @@ func (t *Loki) stopDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
-	t.worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	t.worker, err = frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
 		return
 	}
@@ -257,8 +258,8 @@ func (t *Loki) stopStore() error {
 	return nil
 }
 
-func (t *Loki) initQueryFrontend(cfg *Config) (err error) {
-	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
+func (t *Loki) initQueryFrontend() (err error) {
+	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger)
 	if err != nil {
 		return
 	}
@@ -269,7 +270,7 @@ func (t *Loki) initQueryFrontend(cfg *Config) (err error) {
 	// t.frontend.Wrap("query_range", tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
-	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(
+	t.server.HTTP.PathPrefix(t.cfg.HTTPPrefix).Handler(
 		t.httpAuthMiddleware.Wrap(
 			t.frontend.Handler(),
 		),
