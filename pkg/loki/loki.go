@@ -27,6 +27,7 @@ import (
 type Config struct {
 	Target      moduleName `yaml:"target,omitempty"`
 	AuthEnabled bool       `yaml:"auth_enabled,omitempty"`
+	HTTPPrefix  string     `yaml:"http_prefix"`
 
 	Server           server.Config            `yaml:"server,omitempty"`
 	Distributor      distributor.Config       `yaml:"distributor,omitempty"`
