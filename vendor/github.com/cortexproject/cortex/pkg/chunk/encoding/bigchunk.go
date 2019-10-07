@@ -15,8 +15,9 @@ const samplesPerChunk = 120
 var errOutOfBounds = errors.New("out of bounds")
 
 type smallChunk struct {
-	chunkenc.XORChunk
+	*chunkenc.XORChunk
 	start int64
+	end   int64
 }
 
 // bigchunk is a set of prometheus/tsdb chunks.  It grows over time and has no
@@ -32,10 +33,10 @@ func newBigchunk() *bigchunk {
 	return &bigchunk{}
 }
 
-func (b *bigchunk) Add(sample model.SamplePair) (Chunk, error) {
+func (b *bigchunk) Add(sample model.SamplePair) ([]Chunk, error) {
 	if b.remainingSamples == 0 {
 		if bigchunkSizeCapBytes > 0 && b.Size() > bigchunkSizeCapBytes {
-			return addToOverflowChunk(sample)
+			return addToOverflowChunk(b, sample)
 		}
 		if err := b.addNextChunk(sample.Timestamp); err != nil {
 			return nil, err
@@ -44,7 +45,8 @@ func (b *bigchunk) Add(sample model.SamplePair) (Chunk, error) {
 
 	b.appender.Append(int64(sample.Timestamp), float64(sample.Value))
 	b.remainingSamples--
-	return nil, nil
+	b.chunks[len(b.chunks)-1].end = int64(sample.Timestamp)
+	return []Chunk{b}, nil
 }
 
 // addNextChunk adds a new XOR "subchunk" to the internal list of chunks.
@@ -61,25 +63,22 @@ func (b *bigchunk) addNextChunk(start model.Time) error {
 			if err != nil {
 				return err
 			}
-			b.chunks[l-1].XORChunk = *compacted.(*chunkenc.XORChunk)
+			b.chunks[l-1].XORChunk = compacted.(*chunkenc.XORChunk)
 		}
 	}
 
-	// Explicitly reallocate slice to avoid up to 2x overhead if we let append() do it
-	if len(b.chunks)+1 > cap(b.chunks) {
-		newChunks := make([]smallChunk, len(b.chunks), len(b.chunks)+1)
-		copy(newChunks, b.chunks)
-		b.chunks = newChunks
-	}
-	b.chunks = append(b.chunks, smallChunk{
-		XORChunk: *chunkenc.NewXORChunk(),
-		start:    int64(start),
-	})
-
-	appender, err := b.chunks[len(b.chunks)-1].Appender()
+	chunk := chunkenc.NewXORChunk()
+	appender, err := chunk.Appender()
 	if err != nil {
 		return err
 	}
+
+	b.chunks = append(b.chunks, smallChunk{
+		XORChunk: chunk,
+		start:    int64(start),
+		end:      int64(start),
+	})
+
 	b.appender = appender
 	b.remainingSamples = samplesPerChunk
 	return nil
@@ -132,15 +131,16 @@ func (b *bigchunk) UnmarshalFromBuf(buf []byte) error {
 			return err
 		}
 
-		var start int64
-		start, reuseIter, err = firstTime(chunk, reuseIter)
+		var start, end int64
+		start, end, reuseIter, err = firstAndLastTimes(chunk, reuseIter)
 		if err != nil {
 			return err
 		}
 
 		b.chunks = append(b.chunks, smallChunk{
-			XORChunk: *chunk.(*chunkenc.XORChunk),
+			XORChunk: chunk.(*chunkenc.XORChunk),
 			start:    int64(start),
+			end:      int64(end),
 		})
 	}
 	return nil
@@ -197,8 +197,8 @@ func (b *bigchunk) NewIterator(reuseIter Iterator) Iterator {
 func (b *bigchunk) Slice(start, end model.Time) Chunk {
 	i, j := 0, len(b.chunks)
 	for k := 0; k < len(b.chunks); k++ {
-		if b.chunks[k].start <= int64(start) {
-			i = k
+		if b.chunks[k].end < int64(start) {
+			i = k + 1
 		}
 		if b.chunks[k].start > int64(end) {
 			j = k
@@ -258,11 +258,14 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 
 	// If the seek is outside the current chunk, use the index to find the right
 	// chunk.
-	if int64(target) < it.chunks[it.i].start ||
-		(it.i+1 < len(it.chunks) && int64(target) >= it.chunks[it.i+1].start) {
+	if int64(target) < it.chunks[it.i].start || int64(target) > it.chunks[it.i].end {
 		it.curr = nil
-		for it.i = 0; it.i+1 < len(it.chunks) && int64(target) >= it.chunks[it.i+1].start; it.i++ {
+		for it.i = 0; it.i < len(it.chunks) && int64(target) > it.chunks[it.i].end; it.i++ {
 		}
+	}
+
+	if it.i >= len(it.chunks) {
+		return false
 	}
 
 	if it.curr == nil {
@@ -276,14 +279,6 @@ func (it *bigchunkIterator) FindAtOrAfter(target model.Time) bool {
 		if t >= int64(target) {
 			return true
 		}
-	}
-	// Timestamp is after the end of that chunk - if there is another chunk
-	// then the position we need is at the beginning of it.
-	if it.i+1 < len(it.chunks) {
-		it.i++
-		it.curr = it.chunks[it.i].Iterator(it.curr)
-		it.curr.Next()
-		return true
 	}
 	return false
 }
@@ -338,11 +333,20 @@ func (it *bigchunkIterator) Err() error {
 	return nil
 }
 
-func firstTime(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, chunkenc.Iterator, error) {
-	var first int64
+func firstAndLastTimes(c chunkenc.Chunk, iter chunkenc.Iterator) (int64, int64, chunkenc.Iterator, error) {
+	var (
+		first    int64
+		last     int64
+		firstSet bool
+	)
 	iter = c.Iterator(iter)
-	if iter.Next() {
-		first, _ = iter.At()
+	for iter.Next() {
+		t, _ := iter.At()
+		if !firstSet {
+			first = t
+			firstSet = true
+		}
+		last = t
 	}
-	return first, iter, iter.Err()
+	return first, last, iter, iter.Err()
 }

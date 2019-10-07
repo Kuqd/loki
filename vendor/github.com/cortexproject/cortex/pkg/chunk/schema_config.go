@@ -1,7 +1,6 @@
 package chunk
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -22,11 +21,6 @@ const (
 	secondsInDay       = int64(24 * time.Hour / time.Second)
 	millisecondsInHour = int64(time.Hour / time.Millisecond)
 	millisecondsInDay  = int64(24 * time.Hour / time.Millisecond)
-)
-
-var (
-	errInvalidSchemaVersion = errors.New("invalid schema version")
-	errInvalidTablePeriod   = errors.New("the table period must be a multiple of 24h (1h for schema v1)")
 )
 
 // PeriodConfig defines the schema and tables to use for a period of time
@@ -122,7 +116,8 @@ func (cfg *LegacySchemaConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.ChunkTables.RegisterFlags("dynamodb.chunk-table", "cortex_chunks_", f)
 }
 
-func (cfg *SchemaConfig) loadFromFlags() error {
+// translate from command-line parameters into new config data structure
+func (cfg *SchemaConfig) translate() error {
 	cfg.Configs = []PeriodConfig{}
 
 	add := func(t string, f model.Time) {
@@ -177,30 +172,6 @@ func (cfg *SchemaConfig) loadFromFlags() error {
 	return nil
 }
 
-// loadFromFile loads the schema config from a yaml file
-func (cfg *SchemaConfig) loadFromFile() error {
-	f, err := os.Open(cfg.fileName)
-	if err != nil {
-		return err
-	}
-
-	decoder := yaml.NewDecoder(f)
-	decoder.SetStrict(true)
-	return decoder.Decode(&cfg)
-}
-
-// Validate the schema config and returns an error if the validation
-// doesn't pass
-func (cfg *SchemaConfig) Validate() error {
-	for _, periodCfg := range cfg.Configs {
-		if err := periodCfg.validate(); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // ForEachAfter will call f() on every entry after t, splitting
 // entries if necessary so there is an entry starting at t
 func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)) {
@@ -219,75 +190,33 @@ func (cfg *SchemaConfig) ForEachAfter(t model.Time, f func(config *PeriodConfig)
 
 // CreateSchema returns the schema defined by the PeriodConfig
 func (cfg PeriodConfig) CreateSchema() Schema {
-	rowShards := uint32(16)
-	if cfg.RowShards > 0 {
-		rowShards = cfg.RowShards
-	}
-
-	var e entries
+	var s schema
 	switch cfg.Schema {
 	case "v1":
-		e = originalEntries{}
+		s = schema{cfg.hourlyBuckets, originalEntries{}}
 	case "v2":
-		e = originalEntries{}
+		s = schema{cfg.dailyBuckets, originalEntries{}}
 	case "v3":
-		e = base64Entries{originalEntries{}}
+		s = schema{cfg.dailyBuckets, base64Entries{originalEntries{}}}
 	case "v4":
-		e = labelNameInHashKeyEntries{}
+		s = schema{cfg.dailyBuckets, labelNameInHashKeyEntries{}}
 	case "v5":
-		e = v5Entries{}
+		s = schema{cfg.dailyBuckets, v5Entries{}}
 	case "v6":
-		e = v6Entries{}
+		s = schema{cfg.dailyBuckets, v6Entries{}}
 	case "v9":
-		e = v9Entries{}
+		s = schema{cfg.dailyBuckets, v9Entries{}}
 	case "v10":
-		e = v10Entries{
+		rowShards := uint32(16)
+		if cfg.RowShards > 0 {
+			rowShards = cfg.RowShards
+		}
+
+		s = schema{cfg.dailyBuckets, v10Entries{
 			rowShards: rowShards,
-		}
-	case "v11":
-		e = v11Entries{
-			v10Entries: v10Entries{
-				rowShards: rowShards,
-			},
-		}
-	default:
-		return nil
+		}}
 	}
-
-	buckets, _ := cfg.createBucketsFunc()
-
-	return schema{buckets, e}
-}
-
-func (cfg PeriodConfig) createBucketsFunc() (schemaBucketsFunc, time.Duration) {
-	switch cfg.Schema {
-	case "v1":
-		return cfg.hourlyBuckets, 1 * time.Hour
-	default:
-		return cfg.dailyBuckets, 24 * time.Hour
-	}
-}
-
-// validate the period config
-func (cfg PeriodConfig) validate() error {
-	// Ensure the schema version exists
-	schema := cfg.CreateSchema()
-	if schema == nil {
-		return errInvalidSchemaVersion
-	}
-
-	// Ensure the tables period is a multiple of the bucket period
-	_, bucketsPeriod := cfg.createBucketsFunc()
-
-	if cfg.IndexTables.Period > 0 && cfg.IndexTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	if cfg.ChunkTables.Period > 0 && cfg.ChunkTables.Period%bucketsPeriod != 0 {
-		return errInvalidTablePeriod
-	}
-
-	return nil
+	return s
 }
 
 // Load the yaml file, or build the config from legacy command-line flags
@@ -295,21 +224,18 @@ func (cfg *SchemaConfig) Load() error {
 	if len(cfg.Configs) > 0 {
 		return nil
 	}
-
-	// Load config from file (if provided), falling back to CLI flags
-	var err error
-
 	if cfg.fileName == "" {
-		err = cfg.loadFromFlags()
-	} else {
-		err = cfg.loadFromFile()
+		return cfg.translate()
 	}
 
+	f, err := os.Open(cfg.fileName)
 	if err != nil {
 		return err
 	}
 
-	return cfg.Validate()
+	decoder := yaml.NewDecoder(f)
+	decoder.SetStrict(true)
+	return decoder.Decode(&cfg)
 }
 
 // PrintYaml dumps the yaml to stdout, to aid in migration
@@ -333,6 +259,11 @@ func (cfg *PeriodConfig) hourlyBuckets(from, through model.Time, userID string) 
 		result      = []Bucket{}
 	)
 
+	// If through ends on the hour, don't include the upcoming hour
+	if through.Unix()%secondsInHour == 0 {
+		throughHour--
+	}
+
 	for i := fromHour; i <= throughHour; i++ {
 		relativeFrom := util.Max64(0, int64(from)-(i*millisecondsInHour))
 		relativeThrough := util.Min64(millisecondsInHour, int64(through)-(i*millisecondsInHour))
@@ -352,6 +283,11 @@ func (cfg *PeriodConfig) dailyBuckets(from, through model.Time, userID string) [
 		throughDay = through.Unix() / secondsInDay
 		result     = []Bucket{}
 	)
+
+	// If through ends on 00:00 of the day, don't include the upcoming day
+	if through.Unix()%secondsInDay == 0 {
+		throughDay--
+	}
 
 	for i := fromDay; i <= throughDay; i++ {
 		// The idea here is that the hash key contains the bucket start time (rounded to

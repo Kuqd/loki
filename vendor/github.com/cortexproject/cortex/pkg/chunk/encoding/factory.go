@@ -1,7 +1,6 @@
 package encoding
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"strconv"
@@ -27,26 +26,13 @@ func (Config) RegisterFlags(f *flag.FlagSet) {
 	flag.IntVar(&bigchunkSizeCapBytes, "store.bigchunk-size-cap-bytes", bigchunkSizeCapBytes, "When using bigchunk encoding, start a new bigchunk if over this size (0 = unlimited)")
 }
 
-// Validate errors out if the encoding is set to Delta.
-func (Config) Validate() error {
-	if DefaultEncoding == Delta {
-		// Delta is deprecated.
-		return errors.New("delta encoding is deprecated")
-	}
-	return nil
-}
-
 // String implements flag.Value.
 func (e Encoding) String() string {
-	if known, found := encodings[e]; found {
-		return known.Name
-	}
 	return fmt.Sprintf("%d", e)
 }
 
 const (
-	// Delta encoding is no longer supported and will be automatically changed to DoubleDelta.
-	// It still exists here to not change the `ingester.chunk-encoding` flag values.
+	// Delta encoding
 	Delta Encoding = iota
 	// DoubleDelta encoding
 	DoubleDelta
@@ -62,6 +48,12 @@ type encoding struct {
 }
 
 var encodings = map[Encoding]encoding{
+	Delta: {
+		Name: "Delta",
+		New: func() Chunk {
+			return newDeltaEncodedChunk(d1, d0, true, ChunkLen)
+		},
+	},
 	DoubleDelta: {
 		Name: "DoubleDelta",
 		New: func() Chunk {

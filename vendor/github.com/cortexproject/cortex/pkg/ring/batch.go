@@ -2,7 +2,6 @@ package ring
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"sync/atomic"
 )
@@ -38,9 +37,6 @@ type itemTracker struct {
 //
 // Not implemented as a method on Ring so we can test separately.
 func DoBatch(ctx context.Context, r ReadRing, keys []uint32, callback func(IngesterDesc, []int) error, cleanup func()) error {
-	if r.IngesterCount() <= 0 {
-		return fmt.Errorf("DoBatch: IngesterCount <= 0")
-	}
 	expectedTrackers := len(keys) * (r.ReplicationFactor() + 1) / r.IngesterCount()
 	itemTrackers := make([]itemTracker, len(keys))
 	ingesters := make(map[string]ingester, r.IngesterCount())
