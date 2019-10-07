@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -37,6 +38,8 @@ type Config struct {
 	SchemaConfig     chunk.SchemaConfig       `yaml:"schema_config,omitempty"`
 	LimitsConfig     validation.Limits        `yaml:"limits_config,omitempty"`
 	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
+	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
+	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
 }
 
 // RegisterFlags registers flag.
@@ -57,6 +60,8 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.SchemaConfig.RegisterFlags(f)
 	c.LimitsConfig.RegisterFlags(f)
 	c.TableManager.RegisterFlags(f)
+	c.Frontend.RegisterFlags(f)
+	c.Worker.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.
@@ -71,6 +76,8 @@ type Loki struct {
 	querier      *querier.Querier
 	store        storage.Store
 	tableManager *chunk.TableManager
+	worker       frontend.Worker
+	frontend     *frontend.Frontend
 
 	httpAuthMiddleware middleware.Interface
 }

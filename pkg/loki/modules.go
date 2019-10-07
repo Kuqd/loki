@@ -9,6 +9,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/chunk/storage"
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -37,6 +38,7 @@ const (
 	Distributor
 	Ingester
 	Querier
+	QueryFrontend
 	Store
 	TableManager
 	All
@@ -58,6 +60,8 @@ func (m moduleName) String() string {
 		return "ingester"
 	case Querier:
 		return "querier"
+	case QueryFrontend:
+		return "query-frontend"
 	case TableManager:
 		return "table-manager"
 	case All:
@@ -89,6 +93,9 @@ func (m *moduleName) Set(s string) error {
 		return nil
 	case "querier":
 		*m = Querier
+		return nil
+	case "query-frontend":
+		*m = QueryFrontend
 		return nil
 	case "table-manager":
 		*m = TableManager
@@ -143,6 +150,10 @@ func (t *Loki) stopDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
+	t.worker, err = frontend.NewWorker(cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
+	if err != nil {
+		return
+	}
 	t.querier, err = querier.New(t.cfg.Querier, t.cfg.IngesterClient, t.ring, t.store, t.overrides)
 	if err != nil {
 		return
@@ -246,6 +257,31 @@ func (t *Loki) stopStore() error {
 	return nil
 }
 
+func (t *Loki) initQueryFrontend(cfg *Config) (err error) {
+	t.frontend, err = frontend.New(cfg.Frontend, util.Logger)
+	if err != nil {
+		return
+	}
+	// tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides)
+	// if err != nil {
+	// 	return err
+	// }
+	// t.frontend.Wrap("query_range", tripperware)
+
+	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
+	t.server.HTTP.PathPrefix(cfg.HTTPPrefix).Handler(
+		t.httpAuthMiddleware.Wrap(
+			t.frontend.Handler(),
+		),
+	)
+	return
+}
+
+func (t *Loki) stopQueryFrontend() (err error) {
+	t.frontend.Close()
+	return
+}
+
 // listDeps recursively gets a list of dependencies for a passed moduleName
 func listDeps(m moduleName) []moduleName {
 	deps := modules[m].deps
@@ -347,6 +383,12 @@ var modules = map[moduleName]module{
 	Querier: {
 		deps: []moduleName{Store, Ring, Server},
 		init: (*Loki).initQuerier,
+	},
+
+	QueryFrontend: {
+		deps: []moduleName{Server, Overrides},
+		init: (*Loki).initQueryFrontend,
+		stop: (*Loki).stopQueryFrontend,
 	},
 
 	TableManager: {

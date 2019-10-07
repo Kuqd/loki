@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"strings"
-	"time"
 
 	"cloud.google.com/go/bigtable"
 	ot "github.com/opentracing/opentracing-go"
@@ -27,6 +26,7 @@ const (
 	column       = "c"
 	separator    = "\000"
 	maxRowReads  = 100
+	null         = string('\xff')
 )
 
 // Config for a StorageClient
@@ -38,17 +38,12 @@ type Config struct {
 
 	ColumnKey      bool
 	DistributeKeys bool
-
-	TableCacheEnabled    bool
-	TableCacheExpiration time.Duration
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.StringVar(&cfg.Project, "bigtable.project", "", "Bigtable project ID.")
 	f.StringVar(&cfg.Instance, "bigtable.instance", "", "Bigtable instance ID.")
-	f.BoolVar(&cfg.TableCacheEnabled, "bigtable.table-cache.enabled", true, "If enabled, once a tables info is fetched, it is cached.")
-	f.DurationVar(&cfg.TableCacheExpiration, "bigtable.table-cache.expiration", 30*time.Minute, "Duration to cache tables before checking again.")
 
 	cfg.GRPCClientConfig.RegisterFlags("bigtable", f)
 }

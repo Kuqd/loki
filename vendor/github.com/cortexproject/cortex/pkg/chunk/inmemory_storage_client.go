@@ -165,7 +165,6 @@ func (m *MockStorage) BatchWrite(ctx context.Context, batch WriteBatch) error {
 			itemComponents := decodeRangeKey(items[i].rangeValue)
 			if !bytes.Equal(itemComponents[3], metricNameRangeKeyV1) &&
 				!bytes.Equal(itemComponents[3], seriesRangeKeyV1) &&
-				!bytes.Equal(itemComponents[3], labelNamesRangeKeyV1) &&
 				!bytes.Equal(itemComponents[3], labelSeriesRangeKeyV1) {
 				return fmt.Errorf("Dupe write")
 			}
@@ -267,7 +266,9 @@ func (m *MockStorage) query(ctx context.Context, query IndexQuery, callback func
 	}
 
 	result := mockReadBatch{}
-	result.items = append(result.items, items...)
+	for _, item := range items {
+		result.items = append(result.items, item)
+	}
 
 	callback(&result)
 	return nil

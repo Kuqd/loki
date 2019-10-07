@@ -151,18 +151,11 @@ func (d dynamoTableClient) CreateTable(ctx context.Context, desc chunk.TableDesc
 						KeyType:       aws.String(dynamodb.KeyTypeRange),
 					},
 				},
-			}
-
-			if desc.UseOnDemandIOMode {
-				input.BillingMode = aws.String(dynamodb.BillingModePayPerRequest)
-			} else {
-				input.BillingMode = aws.String(dynamodb.BillingModeProvisioned)
-				input.ProvisionedThroughput = &dynamodb.ProvisionedThroughput{
+				ProvisionedThroughput: &dynamodb.ProvisionedThroughput{
 					ReadCapacityUnits:  aws.Int64(desc.ProvisionedRead),
 					WriteCapacityUnits: aws.Int64(desc.ProvisionedWrite),
-				}
+				},
 			}
-
 			output, err := d.DynamoDB.CreateTableWithContext(ctx, input)
 			if err != nil {
 				return err
