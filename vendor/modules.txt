@@ -116,6 +116,7 @@ github.com/coreos/go-systemd/sdjournal
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
 # github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953 => github.com/cyriltovena/cortex v0.0.0-20191002163047-55c3a014c601
+# github.com/cortexproject/cortex v0.2.0 => github.com/cyriltovena/cortex v0.0.0-20191008175502-0d692886f84e
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/cache
@@ -130,6 +131,7 @@ github.com/cortexproject/cortex/pkg/ingester/client
 github.com/cortexproject/cortex/pkg/ingester/index
 github.com/cortexproject/cortex/pkg/prom1/storage/metric
 github.com/cortexproject/cortex/pkg/querier/frontend
+github.com/cortexproject/cortex/pkg/querier/queryrange
 github.com/cortexproject/cortex/pkg/ring
 github.com/cortexproject/cortex/pkg/ring/kv
 github.com/cortexproject/cortex/pkg/ring/kv/codec
@@ -483,6 +485,7 @@ github.com/uber/jaeger-lib/metrics/prometheus
 # github.com/ugorji/go/codec v1.1.7
 github.com/ugorji/go/codec
 # github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
+# github.com/weaveworks/common v0.0.0-20190822150010-afb9996716e4 => github.com/sandlis/weaveworks-common v0.0.0-20190822064708-8fa0a1ca9d89
 github.com/weaveworks/common/aws
 github.com/weaveworks/common/errors
 github.com/weaveworks/common/httpgrpc
