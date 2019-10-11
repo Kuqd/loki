@@ -10,11 +10,12 @@ import (
 const millisecondPerDay = int64(24 * time.Hour / time.Millisecond)
 
 // SplitByDayMiddleware creates a new Middleware that splits requests by day.
-func SplitByDayMiddleware(limits Limits) Middleware {
+func SplitByDayMiddleware(limits Limits, codec Codec) Middleware {
 	return MiddlewareFunc(func(next Handler) Handler {
 		return splitByDay{
 			next:   next,
 			limits: limits,
+			codec:  codec,
 		}
 	})
 }
@@ -22,9 +23,10 @@ func SplitByDayMiddleware(limits Limits) Middleware {
 type splitByDay struct {
 	next   Handler
 	limits Limits
+	codec  Codec
 }
 
-func (s splitByDay) Do(ctx context.Context, r *Request) (*APIResponse, error) {
+func (s splitByDay) Do(ctx context.Context, r Request) (Response, error) {
 	// First we're going to build new requests, one for each day, taking care
 	// to line up the boundaries with step.
 	reqs := splitQuery(r)
@@ -34,29 +36,27 @@ func (s splitByDay) Do(ctx context.Context, r *Request) (*APIResponse, error) {
 		return nil, err
 	}
 
-	resps := make([]*APIResponse, 0, len(reqResps))
+	resps := make([]Response, 0, len(reqResps))
 	for _, reqResp := range reqResps {
 		resps = append(resps, reqResp.resp)
 	}
 
-	return mergeAPIResponses(resps)
+	response, err := s.codec.MergeResponse(resps...)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
 }
 
-func splitQuery(r *Request) []*Request {
-	var reqs []*Request
-	for start := r.Start; start < r.End; start = nextDayBoundary(start, r.Step) + r.Step {
-		end := nextDayBoundary(start, r.Step)
-		if end+r.Step >= r.End {
-			end = r.End
+func splitQuery(r Request) []Request {
+	var reqs []Request
+	for start := r.GetStart(); start < r.GetEnd(); start = nextDayBoundary(start, r.GetStep()) + r.GetStep() {
+		end := nextDayBoundary(start, r.GetStep())
+		if end+r.GetStep() >= r.GetEnd() {
+			end = r.GetEnd()
 		}
 
-		reqs = append(reqs, &Request{
-			Path:  r.Path,
-			Start: start,
-			End:   end,
-			Step:  r.Step,
-			Query: r.Query,
-		})
+		reqs = append(reqs, r.WithStartEnd(start, end))
 	}
 	return reqs
 }
@@ -73,11 +73,11 @@ func nextDayBoundary(t, step int64) int64 {
 }
 
 type requestResponse struct {
-	req  *Request
-	resp *APIResponse
+	req  Request
+	resp Response
 }
 
-func doRequests(ctx context.Context, downstream Handler, reqs []*Request, limits Limits) ([]requestResponse, error) {
+func doRequests(ctx context.Context, downstream Handler, reqs []Request, limits Limits) ([]requestResponse, error) {
 	userid, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, err
@@ -88,7 +88,7 @@ func doRequests(ctx context.Context, downstream Handler, reqs []*Request, limits
 	defer cancel()
 
 	// Feed all requests to a bounded intermediate channel to limit parallelism.
-	intermediate := make(chan *Request)
+	intermediate := make(chan Request)
 	go func() {
 		for _, req := range reqs {
 			intermediate <- req
