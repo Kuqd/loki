@@ -44,7 +44,6 @@ var (
 // Config for a Frontend.
 type Config struct {
 	MaxOutstandingPerTenant int    `yaml:"max_outstanding_per_tenant"`
-	MaxRetries              int    `yaml:"max_retries"`
 	CompressResponses       bool   `yaml:"compress_responses"`
 	DownstreamURL           string `yaml:"downstream"`
 }
@@ -52,7 +51,6 @@ type Config struct {
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 	f.IntVar(&cfg.MaxOutstandingPerTenant, "querier.max-outstanding-requests-per-tenant", 100, "Maximum number of outstanding requests per tenant per frontend; requests beyond this error with HTTP 429.")
-	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
 	f.BoolVar(&cfg.CompressResponses, "querier.compress-http-responses", false, "Compress HTTP responses.")
 	f.StringVar(&cfg.DownstreamURL, "frontend.downstream-url", "", "URL of downstream Prometheus.")
 }
@@ -91,8 +89,6 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 	// The front end implements http.RoundTripper using a GRPC worker queue by default.
 	f.roundTripper = f
 	// However if the user has specified a downstream Prometheus, then we should
-	// forward requests to that.  Otherwise we will wait for queries to
-	// contact us.
 	if cfg.DownstreamURL != "" {
 		u, err := url.Parse(cfg.DownstreamURL)
 		if err != nil {
@@ -107,15 +103,12 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 		})
 	}
 
-	if cfg.MaxRetries > 0 {
-		f.Wrap("retry", NewRetryTripperware(log, cfg.MaxRetries))
-	}
 	return f, nil
 }
 
 // Wrap uses a Tripperware to chain a new RoundTripper to the frontend.
-func (f *Frontend) Wrap(name string, trw Tripperware) {
-	f.roundTripper = InstrumentRoundTripper(name, trw(f.roundTripper))
+func (f *Frontend) Wrap(trw Tripperware) {
+	f.roundTripper = trw(f.roundTripper)
 }
 
 // Tripperware is a signature for all http client-side middleware.

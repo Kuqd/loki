@@ -10,6 +10,7 @@ import (
 	_ "github.com/gogo/protobuf/gogoproto"
 	proto "github.com/gogo/protobuf/proto"
 	github_com_gogo_protobuf_types "github.com/gogo/protobuf/types"
+	types "github.com/gogo/protobuf/types"
 	_ "github.com/golang/protobuf/ptypes/duration"
 	io "io"
 	math "math"
@@ -30,7 +31,7 @@ var _ = time.Kitchen
 // proto package needs to be updated.
 const _ = proto.GoGoProtoPackageIsVersion2 // please upgrade the proto package
 
-type Request struct {
+type PrometheusRequest struct {
 	Path    string        `protobuf:"bytes,1,opt,name=path,proto3" json:"path,omitempty"`
 	Start   int64         `protobuf:"varint,2,opt,name=start,proto3" json:"start,omitempty"`
 	End     int64         `protobuf:"varint,3,opt,name=end,proto3" json:"end,omitempty"`
@@ -39,17 +40,17 @@ type Request struct {
 	Query   string        `protobuf:"bytes,6,opt,name=query,proto3" json:"query,omitempty"`
 }
 
-func (m *Request) Reset()      { *m = Request{} }
-func (*Request) ProtoMessage() {}
-func (*Request) Descriptor() ([]byte, []int) {
+func (m *PrometheusRequest) Reset()      { *m = PrometheusRequest{} }
+func (*PrometheusRequest) ProtoMessage() {}
+func (*PrometheusRequest) Descriptor() ([]byte, []int) {
 	return fileDescriptor_79b02382e213d0b2, []int{0}
 }
-func (m *Request) XXX_Unmarshal(b []byte) error {
+func (m *PrometheusRequest) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Request) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PrometheusRequest) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Request.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PrometheusRequest.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalTo(b)
@@ -59,78 +60,78 @@ func (m *Request) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Request) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Request.Merge(m, src)
+func (m *PrometheusRequest) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrometheusRequest.Merge(m, src)
 }
-func (m *Request) XXX_Size() int {
+func (m *PrometheusRequest) XXX_Size() int {
 	return m.Size()
 }
-func (m *Request) XXX_DiscardUnknown() {
-	xxx_messageInfo_Request.DiscardUnknown(m)
+func (m *PrometheusRequest) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrometheusRequest.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Request proto.InternalMessageInfo
+var xxx_messageInfo_PrometheusRequest proto.InternalMessageInfo
 
-func (m *Request) GetPath() string {
+func (m *PrometheusRequest) GetPath() string {
 	if m != nil {
 		return m.Path
 	}
 	return ""
 }
 
-func (m *Request) GetStart() int64 {
+func (m *PrometheusRequest) GetStart() int64 {
 	if m != nil {
 		return m.Start
 	}
 	return 0
 }
 
-func (m *Request) GetEnd() int64 {
+func (m *PrometheusRequest) GetEnd() int64 {
 	if m != nil {
 		return m.End
 	}
 	return 0
 }
 
-func (m *Request) GetStep() int64 {
+func (m *PrometheusRequest) GetStep() int64 {
 	if m != nil {
 		return m.Step
 	}
 	return 0
 }
 
-func (m *Request) GetTimeout() time.Duration {
+func (m *PrometheusRequest) GetTimeout() time.Duration {
 	if m != nil {
 		return m.Timeout
 	}
 	return 0
 }
 
-func (m *Request) GetQuery() string {
+func (m *PrometheusRequest) GetQuery() string {
 	if m != nil {
 		return m.Query
 	}
 	return ""
 }
 
-type APIResponse struct {
-	Status    string   `protobuf:"bytes,1,opt,name=Status,json=status,proto3" json:"status"`
-	Data      Response `protobuf:"bytes,2,opt,name=Data,json=data,proto3" json:"data,omitempty"`
-	ErrorType string   `protobuf:"bytes,3,opt,name=ErrorType,json=errorType,proto3" json:"errorType,omitempty"`
-	Error     string   `protobuf:"bytes,4,opt,name=Error,json=error,proto3" json:"error,omitempty"`
+type PrometheusResponse struct {
+	Status    string         `protobuf:"bytes,1,opt,name=Status,json=status,proto3" json:"status"`
+	Data      PrometheusData `protobuf:"bytes,2,opt,name=Data,json=data,proto3" json:"data,omitempty"`
+	ErrorType string         `protobuf:"bytes,3,opt,name=ErrorType,json=errorType,proto3" json:"errorType,omitempty"`
+	Error     string         `protobuf:"bytes,4,opt,name=Error,json=error,proto3" json:"error,omitempty"`
 }
 
-func (m *APIResponse) Reset()      { *m = APIResponse{} }
-func (*APIResponse) ProtoMessage() {}
-func (*APIResponse) Descriptor() ([]byte, []int) {
+func (m *PrometheusResponse) Reset()      { *m = PrometheusResponse{} }
+func (*PrometheusResponse) ProtoMessage() {}
+func (*PrometheusResponse) Descriptor() ([]byte, []int) {
 	return fileDescriptor_79b02382e213d0b2, []int{1}
 }
-func (m *APIResponse) XXX_Unmarshal(b []byte) error {
+func (m *PrometheusResponse) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *APIResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PrometheusResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_APIResponse.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PrometheusResponse.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalTo(b)
@@ -140,62 +141,62 @@ func (m *APIResponse) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) 
 		return b[:n], nil
 	}
 }
-func (m *APIResponse) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_APIResponse.Merge(m, src)
+func (m *PrometheusResponse) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrometheusResponse.Merge(m, src)
 }
-func (m *APIResponse) XXX_Size() int {
+func (m *PrometheusResponse) XXX_Size() int {
 	return m.Size()
 }
-func (m *APIResponse) XXX_DiscardUnknown() {
-	xxx_messageInfo_APIResponse.DiscardUnknown(m)
+func (m *PrometheusResponse) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrometheusResponse.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_APIResponse proto.InternalMessageInfo
+var xxx_messageInfo_PrometheusResponse proto.InternalMessageInfo
 
-func (m *APIResponse) GetStatus() string {
+func (m *PrometheusResponse) GetStatus() string {
 	if m != nil {
 		return m.Status
 	}
 	return ""
 }
 
-func (m *APIResponse) GetData() Response {
+func (m *PrometheusResponse) GetData() PrometheusData {
 	if m != nil {
 		return m.Data
 	}
-	return Response{}
+	return PrometheusData{}
 }
 
-func (m *APIResponse) GetErrorType() string {
+func (m *PrometheusResponse) GetErrorType() string {
 	if m != nil {
 		return m.ErrorType
 	}
 	return ""
 }
 
-func (m *APIResponse) GetError() string {
+func (m *PrometheusResponse) GetError() string {
 	if m != nil {
 		return m.Error
 	}
 	return ""
 }
 
-type Response struct {
+type PrometheusData struct {
 	ResultType string         `protobuf:"bytes,1,opt,name=ResultType,json=resultType,proto3" json:"resultType"`
 	Result     []SampleStream `protobuf:"bytes,2,rep,name=Result,json=result,proto3" json:"result"`
 }
 
-func (m *Response) Reset()      { *m = Response{} }
-func (*Response) ProtoMessage() {}
-func (*Response) Descriptor() ([]byte, []int) {
+func (m *PrometheusData) Reset()      { *m = PrometheusData{} }
+func (*PrometheusData) ProtoMessage() {}
+func (*PrometheusData) Descriptor() ([]byte, []int) {
 	return fileDescriptor_79b02382e213d0b2, []int{2}
 }
-func (m *Response) XXX_Unmarshal(b []byte) error {
+func (m *PrometheusData) XXX_Unmarshal(b []byte) error {
 	return m.Unmarshal(b)
 }
-func (m *Response) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
+func (m *PrometheusData) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 	if deterministic {
-		return xxx_messageInfo_Response.Marshal(b, m, deterministic)
+		return xxx_messageInfo_PrometheusData.Marshal(b, m, deterministic)
 	} else {
 		b = b[:cap(b)]
 		n, err := m.MarshalTo(b)
@@ -205,26 +206,26 @@ func (m *Response) XXX_Marshal(b []byte, deterministic bool) ([]byte, error) {
 		return b[:n], nil
 	}
 }
-func (m *Response) XXX_Merge(src proto.Message) {
-	xxx_messageInfo_Response.Merge(m, src)
+func (m *PrometheusData) XXX_Merge(src proto.Message) {
+	xxx_messageInfo_PrometheusData.Merge(m, src)
 }
-func (m *Response) XXX_Size() int {
+func (m *PrometheusData) XXX_Size() int {
 	return m.Size()
 }
-func (m *Response) XXX_DiscardUnknown() {
-	xxx_messageInfo_Response.DiscardUnknown(m)
+func (m *PrometheusData) XXX_DiscardUnknown() {
+	xxx_messageInfo_PrometheusData.DiscardUnknown(m)
 }
 
-var xxx_messageInfo_Response proto.InternalMessageInfo
+var xxx_messageInfo_PrometheusData proto.InternalMessageInfo
 
-func (m *Response) GetResultType() string {
+func (m *PrometheusData) GetResultType() string {
 	if m != nil {
 		return m.ResultType
 	}
 	return ""
 }
 
-func (m *Response) GetResult() []SampleStream {
+func (m *PrometheusData) GetResult() []SampleStream {
 	if m != nil {
 		return m.Result
 	}
@@ -328,10 +329,10 @@ func (m *CachedResponse) GetExtents() []Extent {
 }
 
 type Extent struct {
-	Start    int64        `protobuf:"varint,1,opt,name=start,proto3" json:"start"`
-	End      int64        `protobuf:"varint,2,opt,name=end,proto3" json:"end"`
-	Response *APIResponse `protobuf:"bytes,3,opt,name=response,proto3" json:"response"`
-	TraceId  string       `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"-"`
+	Start    int64      `protobuf:"varint,1,opt,name=start,proto3" json:"start"`
+	End      int64      `protobuf:"varint,2,opt,name=end,proto3" json:"end"`
+	Response *types.Any `protobuf:"bytes,3,opt,name=response,proto3" json:"response"`
+	TraceId  string     `protobuf:"bytes,4,opt,name=trace_id,json=traceId,proto3" json:"-"`
 }
 
 func (m *Extent) Reset()      { *m = Extent{} }
@@ -380,7 +381,7 @@ func (m *Extent) GetEnd() int64 {
 	return 0
 }
 
-func (m *Extent) GetResponse() *APIResponse {
+func (m *Extent) GetResponse() *types.Any {
 	if m != nil {
 		return m.Response
 	}
@@ -395,9 +396,9 @@ func (m *Extent) GetTraceId() string {
 }
 
 func init() {
-	proto.RegisterType((*Request)(nil), "queryrange.Request")
-	proto.RegisterType((*APIResponse)(nil), "queryrange.APIResponse")
-	proto.RegisterType((*Response)(nil), "queryrange.Response")
+	proto.RegisterType((*PrometheusRequest)(nil), "queryrange.PrometheusRequest")
+	proto.RegisterType((*PrometheusResponse)(nil), "queryrange.PrometheusResponse")
+	proto.RegisterType((*PrometheusData)(nil), "queryrange.PrometheusData")
 	proto.RegisterType((*SampleStream)(nil), "queryrange.SampleStream")
 	proto.RegisterType((*CachedResponse)(nil), "queryrange.CachedResponse")
 	proto.RegisterType((*Extent)(nil), "queryrange.Extent")
@@ -406,62 +407,63 @@ func init() {
 func init() { proto.RegisterFile("queryrange.proto", fileDescriptor_79b02382e213d0b2) }
 
 var fileDescriptor_79b02382e213d0b2 = []byte{
-	// 705 bytes of a gzipped FileDescriptorProto
-	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0xcd, 0x4e, 0xdb, 0x4a,
-	0x14, 0xce, 0x90, 0xc4, 0x49, 0x26, 0x28, 0x70, 0x07, 0x74, 0x31, 0x2c, 0xec, 0x28, 0xab, 0x5c,
-	0xe9, 0xe2, 0x48, 0xb9, 0xba, 0x52, 0x37, 0x95, 0x82, 0x0b, 0x0b, 0xa4, 0x2e, 0xd0, 0xd0, 0x55,
-	0x37, 0xd5, 0x24, 0x3e, 0x35, 0x86, 0xc4, 0x36, 0xe3, 0x71, 0x45, 0xa4, 0x56, 0xea, 0x23, 0x74,
-	0xd9, 0x47, 0x68, 0x37, 0x7d, 0x8d, 0xb2, 0x64, 0x53, 0x09, 0x75, 0xe1, 0x16, 0xb3, 0xa9, 0xbc,
-	0xe2, 0x11, 0x2a, 0xcf, 0xd8, 0xc1, 0xeb, 0x6e, 0xf0, 0x39, 0xdf, 0x9c, 0x9f, 0xef, 0x3b, 0x9c,
-	0x13, 0xbc, 0x79, 0x19, 0x03, 0x5f, 0x72, 0xe6, 0xbb, 0x60, 0x85, 0x3c, 0x10, 0x01, 0xc1, 0x8f,
-	0xc8, 0xde, 0xbe, 0xeb, 0x89, 0xb3, 0x78, 0x6a, 0xcd, 0x82, 0xc5, 0xc8, 0x0d, 0xdc, 0x60, 0x24,
-	0x43, 0xa6, 0xf1, 0x6b, 0xe9, 0x49, 0x47, 0x5a, 0x2a, 0x75, 0xcf, 0x70, 0x83, 0xc0, 0x9d, 0xc3,
-	0x63, 0x94, 0x13, 0x73, 0x26, 0xbc, 0xc0, 0x2f, 0xde, 0x27, 0x95, 0x72, 0xb3, 0x80, 0x0b, 0xb8,
-	0x0a, 0x79, 0x70, 0x0e, 0x33, 0x51, 0x78, 0xa3, 0xf0, 0xc2, 0x1d, 0x79, 0xbe, 0x0b, 0x91, 0x00,
-	0x3e, 0x9a, 0xcd, 0x3d, 0xf0, 0xcb, 0x27, 0x55, 0x61, 0xf0, 0x05, 0xe1, 0x16, 0x85, 0xcb, 0x18,
-	0x22, 0x41, 0x08, 0x6e, 0x84, 0x4c, 0x9c, 0xe9, 0xa8, 0x8f, 0x86, 0x1d, 0x2a, 0x6d, 0xb2, 0x8d,
-	0x9b, 0x91, 0x60, 0x5c, 0xe8, 0x6b, 0x7d, 0x34, 0xac, 0x53, 0xe5, 0x90, 0x4d, 0x5c, 0x07, 0xdf,
-	0xd1, 0xeb, 0x12, 0xcb, 0xcd, 0x3c, 0x37, 0x12, 0x10, 0xea, 0x0d, 0x09, 0x49, 0x9b, 0x3c, 0xc5,
-	0x2d, 0xe1, 0x2d, 0x20, 0x88, 0x85, 0xde, 0xec, 0xa3, 0x61, 0x77, 0xbc, 0x6b, 0x29, 0x3d, 0x56,
-	0xa9, 0xc7, 0x3a, 0x2c, 0xf4, 0xd8, 0xed, 0xeb, 0xc4, 0xac, 0x7d, 0xfc, 0x61, 0x22, 0x5a, 0xe6,
-	0xe4, 0xad, 0xe5, 0xe4, 0x74, 0x4d, 0xf2, 0x51, 0xce, 0xe0, 0x1b, 0xc2, 0xdd, 0x83, 0x93, 0x63,
-	0x0a, 0x51, 0x18, 0xf8, 0x11, 0x90, 0x01, 0xd6, 0x4e, 0x05, 0x13, 0x71, 0xa4, 0x68, 0xdb, 0x38,
-	0x4b, 0x4c, 0x2d, 0x92, 0x08, 0x2d, 0xbe, 0x64, 0x82, 0x1b, 0x87, 0x4c, 0x30, 0xa9, 0xa1, 0x3b,
-	0xde, 0xb6, 0x2a, 0xff, 0xa2, 0xb2, 0x8e, 0xfd, 0x77, 0x4e, 0x20, 0x4b, 0xcc, 0x9e, 0xc3, 0x04,
-	0xfb, 0x37, 0x58, 0x78, 0x02, 0x16, 0xa1, 0x58, 0xd2, 0x46, 0xee, 0x93, 0xff, 0x71, 0xe7, 0x88,
-	0xf3, 0x80, 0xbf, 0x58, 0x86, 0x20, 0x65, 0x77, 0xec, 0x9d, 0x2c, 0x31, 0xb7, 0xa0, 0x04, 0x2b,
-	0x19, 0x9d, 0x15, 0x48, 0xfe, 0xc1, 0x4d, 0x99, 0x26, 0xc7, 0xd2, 0xb1, 0xb7, 0xb2, 0xc4, 0xdc,
-	0x90, 0xaf, 0x95, 0xf0, 0xa6, 0x04, 0x06, 0x6f, 0x71, 0x7b, 0xa5, 0xc9, 0xc2, 0x98, 0x42, 0x14,
-	0xcf, 0x85, 0x6c, 0xa7, 0x74, 0xf5, 0xb2, 0xc4, 0xc4, 0x7c, 0x85, 0xd2, 0x8a, 0x4d, 0x26, 0x58,
-	0x53, 0xf1, 0xfa, 0x5a, 0xbf, 0x3e, 0xec, 0x8e, 0xf5, 0xaa, 0xc2, 0x53, 0xb6, 0x08, 0xe7, 0x70,
-	0x2a, 0x38, 0xb0, 0x85, 0xdd, 0x2b, 0x54, 0x6a, 0x2a, 0x9b, 0x16, 0xdf, 0xc1, 0x57, 0x84, 0xd7,
-	0xab, 0x81, 0xe4, 0x1d, 0xd6, 0xe6, 0x6c, 0x0a, 0xf3, 0x7c, 0xac, 0x79, 0xc9, 0xbf, 0xac, 0x62,
-	0x6d, 0x9e, 0xe7, 0xe8, 0x09, 0xf3, 0xb8, 0x4d, 0xf3, 0x5a, 0xdf, 0x13, 0xf3, 0x4f, 0x96, 0x50,
-	0x95, 0x39, 0x70, 0x58, 0x28, 0x80, 0xe7, 0x7c, 0x16, 0x20, 0xb8, 0x37, 0xa3, 0x45, 0x53, 0xf2,
-	0x04, 0xb7, 0x22, 0x49, 0x27, 0x2a, 0x24, 0xf5, 0xca, 0xfe, 0x8a, 0xe5, 0xa3, 0x90, 0x37, 0x6c,
-	0x1e, 0x43, 0x44, 0xcb, 0xf0, 0xc1, 0x39, 0xee, 0x3d, 0x63, 0xb3, 0x33, 0x70, 0x56, 0xd3, 0xdc,
-	0xc5, 0xf5, 0x0b, 0x58, 0x16, 0x63, 0x6c, 0x65, 0x89, 0x99, 0xbb, 0x34, 0xff, 0x93, 0x6f, 0x28,
-	0x5c, 0x09, 0xf0, 0x45, 0xd9, 0x86, 0x54, 0x27, 0x77, 0x24, 0x9f, 0xec, 0x8d, 0xa2, 0x55, 0x19,
-	0x4a, 0x4b, 0x63, 0xf0, 0x19, 0x61, 0x4d, 0x05, 0x11, 0xb3, 0xbc, 0x93, 0xbc, 0x4d, 0xdd, 0xee,
-	0x64, 0x89, 0xa9, 0x80, 0xf2, 0x64, 0x76, 0xd5, 0xc9, 0xc8, 0x33, 0x52, 0x2c, 0xc0, 0x77, 0xd4,
-	0xed, 0x1c, 0xe0, 0x36, 0x2f, 0xc8, 0xca, 0xdd, 0xea, 0x8e, 0x77, 0xaa, 0x34, 0x2a, 0xdb, 0x6e,
-	0xaf, 0x67, 0x89, 0xb9, 0x0a, 0xa6, 0x2b, 0x8b, 0xf4, 0x71, 0x5b, 0x70, 0x36, 0x83, 0x57, 0x9e,
-	0x53, 0xec, 0x5a, 0x33, 0x4b, 0x4c, 0xb4, 0x4f, 0x5b, 0x12, 0x3e, 0x76, 0xec, 0xc9, 0xcd, 0x9d,
-	0x51, 0xbb, 0xbd, 0x33, 0x6a, 0x0f, 0x77, 0x06, 0x7a, 0x9f, 0x1a, 0xe8, 0x53, 0x6a, 0xa0, 0xeb,
-	0xd4, 0x40, 0x37, 0xa9, 0x81, 0x7e, 0xa6, 0x06, 0xfa, 0x95, 0x1a, 0xb5, 0x87, 0xd4, 0x40, 0x1f,
-	0xee, 0x8d, 0xda, 0xcd, 0xbd, 0x51, 0xbb, 0xbd, 0x37, 0x6a, 0x2f, 0x2b, 0xbf, 0x5d, 0x53, 0x4d,
-	0x5e, 0xed, 0x7f, 0xbf, 0x03, 0x00, 0x00, 0xff, 0xff, 0x86, 0xdf, 0xbc, 0x7a, 0xe2, 0x04, 0x00,
-	0x00,
+	// 725 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0xff, 0x9c, 0x54, 0xbd, 0x6e, 0xe3, 0x46,
+	0x10, 0xd6, 0x5a, 0x12, 0x65, 0xad, 0x0c, 0xd9, 0x5e, 0x1b, 0x09, 0xe5, 0x82, 0x14, 0x54, 0x29,
+	0x40, 0x4c, 0x01, 0x0a, 0x02, 0xa4, 0x49, 0x60, 0x33, 0x76, 0x80, 0x00, 0x29, 0x8c, 0x75, 0xaa,
+	0x34, 0xc1, 0x4a, 0x9c, 0x50, 0xb4, 0xc5, 0x1f, 0x2f, 0x97, 0x81, 0x55, 0x04, 0x08, 0xf2, 0x04,
+	0x29, 0xf3, 0x04, 0xc1, 0x3d, 0xc2, 0xbd, 0xc1, 0xb9, 0x74, 0x69, 0x5c, 0xc1, 0x3b, 0xd3, 0xcd,
+	0x81, 0x95, 0x1f, 0xe1, 0xc0, 0x5d, 0x52, 0xe2, 0xdd, 0x75, 0xd7, 0x98, 0x33, 0xdf, 0x7e, 0x33,
+	0xf3, 0xcd, 0x78, 0x46, 0x78, 0xef, 0x26, 0x01, 0xbe, 0xe2, 0x2c, 0x70, 0xc1, 0x8a, 0x78, 0x28,
+	0x42, 0x82, 0x37, 0xc8, 0xd1, 0xb1, 0xeb, 0x89, 0x45, 0x32, 0xb3, 0xe6, 0xa1, 0x3f, 0x71, 0x43,
+	0x37, 0x9c, 0x48, 0xca, 0x2c, 0xf9, 0x43, 0x7a, 0xd2, 0x91, 0x96, 0x0a, 0x3d, 0x32, 0xdc, 0x30,
+	0x74, 0x97, 0xb0, 0x61, 0x39, 0x09, 0x67, 0xc2, 0x0b, 0x83, 0xf2, 0xfd, 0xa4, 0x96, 0x6e, 0x1e,
+	0x72, 0x01, 0xb7, 0x11, 0x0f, 0xaf, 0x60, 0x2e, 0x4a, 0x6f, 0x12, 0x5d, 0xbb, 0x13, 0x2f, 0x70,
+	0x21, 0x16, 0xc0, 0x27, 0xf3, 0xa5, 0x07, 0x41, 0xf5, 0x54, 0x66, 0x18, 0x7c, 0x5c, 0x81, 0x05,
+	0x2b, 0xf5, 0x34, 0x7a, 0x89, 0xf0, 0xfe, 0x05, 0x0f, 0x7d, 0x10, 0x0b, 0x48, 0x62, 0x0a, 0x37,
+	0x09, 0xc4, 0x82, 0x10, 0xdc, 0x8a, 0x98, 0x58, 0xe8, 0x68, 0x88, 0xc6, 0x5d, 0x2a, 0x6d, 0x72,
+	0x88, 0xdb, 0xb1, 0x60, 0x5c, 0xe8, 0x5b, 0x43, 0x34, 0x6e, 0x52, 0xe5, 0x90, 0x3d, 0xdc, 0x84,
+	0xc0, 0xd1, 0x9b, 0x12, 0x2b, 0xcc, 0x22, 0x36, 0x16, 0x10, 0xe9, 0x2d, 0x09, 0x49, 0x9b, 0x7c,
+	0x8f, 0x3b, 0xc2, 0xf3, 0x21, 0x4c, 0x84, 0xde, 0x1e, 0xa2, 0x71, 0x6f, 0x3a, 0xb0, 0x94, 0x24,
+	0xab, 0x92, 0x64, 0x9d, 0x95, 0x4d, 0xdb, 0xdb, 0x77, 0xa9, 0xd9, 0xf8, 0xef, 0x8d, 0x89, 0x68,
+	0x15, 0x53, 0x94, 0x96, 0xe3, 0xd5, 0x35, 0xa9, 0x47, 0x39, 0xa3, 0x0c, 0x61, 0x52, 0x97, 0x1e,
+	0x47, 0x61, 0x10, 0x03, 0x19, 0x61, 0xed, 0x52, 0x30, 0x91, 0xc4, 0x4a, 0xbd, 0x8d, 0xf3, 0xd4,
+	0xd4, 0x62, 0x89, 0xd0, 0xf2, 0x4b, 0x7e, 0xc2, 0xad, 0x33, 0x26, 0x98, 0x6c, 0xa5, 0x37, 0x3d,
+	0xb2, 0x6a, 0xff, 0xce, 0x4d, 0xc6, 0x82, 0x61, 0x7f, 0x51, 0xa8, 0xc9, 0x53, 0xb3, 0xef, 0x30,
+	0xc1, 0xbe, 0x0e, 0x7d, 0x4f, 0x80, 0x1f, 0x89, 0x15, 0x6d, 0x15, 0x3e, 0xf9, 0x16, 0x77, 0xcf,
+	0x39, 0x0f, 0xf9, 0xaf, 0xab, 0x08, 0xe4, 0x0c, 0xba, 0xf6, 0x97, 0x79, 0x6a, 0x1e, 0x40, 0x05,
+	0xd6, 0x22, 0xba, 0x6b, 0x90, 0x7c, 0x85, 0xdb, 0x32, 0x4c, 0xce, 0xa8, 0x6b, 0x1f, 0xe4, 0xa9,
+	0xb9, 0x2b, 0x5f, 0x6b, 0xf4, 0xb6, 0x04, 0x46, 0xff, 0x20, 0xdc, 0xff, 0x50, 0x12, 0xb1, 0x30,
+	0xa6, 0x10, 0x27, 0x4b, 0x21, 0xab, 0xaa, 0x26, 0xfb, 0x79, 0x6a, 0x62, 0xbe, 0x46, 0x69, 0xcd,
+	0x26, 0x27, 0x58, 0x53, 0x7c, 0x7d, 0x6b, 0xd8, 0x1c, 0xf7, 0xa6, 0x7a, 0xbd, 0xdd, 0x4b, 0xe6,
+	0x47, 0x4b, 0xb8, 0x14, 0x1c, 0x98, 0x6f, 0xf7, 0xcb, 0x66, 0x35, 0x15, 0x4d, 0xcb, 0xef, 0xe8,
+	0x15, 0xc2, 0x3b, 0x75, 0x22, 0xf9, 0x0b, 0x6b, 0x4b, 0x36, 0x83, 0x65, 0x31, 0xe3, 0x22, 0xe5,
+	0xbe, 0x55, 0xee, 0xdb, 0x2f, 0x05, 0x7a, 0xc1, 0x3c, 0x6e, 0xd3, 0x22, 0xd7, 0xeb, 0xd4, 0xfc,
+	0x9c, 0xed, 0x55, 0x69, 0x4e, 0x1d, 0x16, 0x09, 0xe0, 0x85, 0x1e, 0x1f, 0x04, 0xf7, 0xe6, 0xb4,
+	0x2c, 0x4a, 0xbe, 0xc3, 0x9d, 0x58, 0xca, 0x89, 0xcb, 0x96, 0xfa, 0x55, 0x7d, 0xa5, 0x72, 0xd3,
+	0xc8, 0x9f, 0x6c, 0x99, 0x40, 0x4c, 0x2b, 0xfa, 0xe8, 0x0a, 0xf7, 0x7f, 0x64, 0xf3, 0x05, 0x38,
+	0xeb, 0x75, 0x19, 0xe0, 0xe6, 0x35, 0xac, 0xca, 0x31, 0x76, 0xf2, 0xd4, 0x2c, 0x5c, 0x5a, 0xfc,
+	0x29, 0xb6, 0x16, 0x6e, 0x05, 0x04, 0xa2, 0x2a, 0x43, 0xea, 0x93, 0x3b, 0x97, 0x4f, 0xf6, 0x6e,
+	0x59, 0xaa, 0xa2, 0xd2, 0xca, 0x18, 0xfd, 0x8f, 0xb0, 0xa6, 0x48, 0xc4, 0xac, 0x6e, 0xa7, 0x28,
+	0xd3, 0xb4, 0xbb, 0x79, 0x6a, 0x2a, 0xa0, 0x3a, 0xa3, 0x81, 0x3a, 0x23, 0x79, 0x5a, 0x4a, 0x05,
+	0x04, 0x8e, 0xba, 0xa7, 0x1f, 0xf0, 0x36, 0x2f, 0xc5, 0xca, 0x15, 0xeb, 0x4d, 0x0f, 0x3f, 0x39,
+	0x9e, 0xd3, 0x60, 0x65, 0xef, 0xe4, 0xa9, 0xb9, 0x66, 0xd2, 0xb5, 0x45, 0x86, 0x78, 0x5b, 0x70,
+	0x36, 0x87, 0xdf, 0x3d, 0xa7, 0xdc, 0xb7, 0x76, 0x9e, 0x9a, 0xe8, 0x98, 0x76, 0x24, 0xfc, 0xb3,
+	0x63, 0x9f, 0xdc, 0x3f, 0x1a, 0x8d, 0x87, 0x47, 0xa3, 0xf1, 0xfc, 0x68, 0xa0, 0xbf, 0x33, 0x03,
+	0xbd, 0xc8, 0x0c, 0x74, 0x97, 0x19, 0xe8, 0x3e, 0x33, 0xd0, 0xdb, 0xcc, 0x40, 0xef, 0x32, 0xa3,
+	0xf1, 0x9c, 0x19, 0xe8, 0xdf, 0x27, 0xa3, 0x71, 0xff, 0x64, 0x34, 0x1e, 0x9e, 0x8c, 0xc6, 0x6f,
+	0xb5, 0x5f, 0xbc, 0x99, 0x26, 0x95, 0x7c, 0xf3, 0x3e, 0x00, 0x00, 0xff, 0xff, 0x5a, 0xc6, 0xad,
+	0x55, 0x18, 0x05, 0x00, 0x00,
 }
 
-func (this *Request) Equal(that interface{}) bool {
+func (this *PrometheusRequest) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*Request)
+	that1, ok := that.(*PrometheusRequest)
 	if !ok {
-		that2, ok := that.(Request)
+		that2, ok := that.(PrometheusRequest)
 		if ok {
 			that1 = &that2
 		} else {
@@ -493,14 +495,14 @@ func (this *Request) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *APIResponse) Equal(that interface{}) bool {
+func (this *PrometheusResponse) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*APIResponse)
+	that1, ok := that.(*PrometheusResponse)
 	if !ok {
-		that2, ok := that.(APIResponse)
+		that2, ok := that.(PrometheusResponse)
 		if ok {
 			that1 = &that2
 		} else {
@@ -526,14 +528,14 @@ func (this *APIResponse) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *Response) Equal(that interface{}) bool {
+func (this *PrometheusData) Equal(that interface{}) bool {
 	if that == nil {
 		return this == nil
 	}
 
-	that1, ok := that.(*Response)
+	that1, ok := that.(*PrometheusData)
 	if !ok {
-		that2, ok := that.(Response)
+		that2, ok := that.(PrometheusData)
 		if ok {
 			that1 = &that2
 		} else {
@@ -660,12 +662,12 @@ func (this *Extent) Equal(that interface{}) bool {
 	}
 	return true
 }
-func (this *Request) GoString() string {
+func (this *PrometheusRequest) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 10)
-	s = append(s, "&queryrange.Request{")
+	s = append(s, "&queryrange.PrometheusRequest{")
 	s = append(s, "Path: "+fmt.Sprintf("%#v", this.Path)+",\n")
 	s = append(s, "Start: "+fmt.Sprintf("%#v", this.Start)+",\n")
 	s = append(s, "End: "+fmt.Sprintf("%#v", this.End)+",\n")
@@ -675,12 +677,12 @@ func (this *Request) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *APIResponse) GoString() string {
+func (this *PrometheusResponse) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 8)
-	s = append(s, "&queryrange.APIResponse{")
+	s = append(s, "&queryrange.PrometheusResponse{")
 	s = append(s, "Status: "+fmt.Sprintf("%#v", this.Status)+",\n")
 	s = append(s, "Data: "+strings.Replace(this.Data.GoString(), `&`, ``, 1)+",\n")
 	s = append(s, "ErrorType: "+fmt.Sprintf("%#v", this.ErrorType)+",\n")
@@ -688,12 +690,12 @@ func (this *APIResponse) GoString() string {
 	s = append(s, "}")
 	return strings.Join(s, "")
 }
-func (this *Response) GoString() string {
+func (this *PrometheusData) GoString() string {
 	if this == nil {
 		return "nil"
 	}
 	s := make([]string, 0, 6)
-	s = append(s, "&queryrange.Response{")
+	s = append(s, "&queryrange.PrometheusData{")
 	s = append(s, "ResultType: "+fmt.Sprintf("%#v", this.ResultType)+",\n")
 	if this.Result != nil {
 		vs := make([]*SampleStream, len(this.Result))
@@ -762,7 +764,7 @@ func valueToGoStringQueryrange(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
-func (m *Request) Marshal() (dAtA []byte, err error) {
+func (m *PrometheusRequest) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -772,7 +774,7 @@ func (m *Request) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Request) MarshalTo(dAtA []byte) (int, error) {
+func (m *PrometheusRequest) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -815,7 +817,7 @@ func (m *Request) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *APIResponse) Marshal() (dAtA []byte, err error) {
+func (m *PrometheusResponse) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -825,7 +827,7 @@ func (m *APIResponse) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *APIResponse) MarshalTo(dAtA []byte) (int, error) {
+func (m *PrometheusResponse) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -859,7 +861,7 @@ func (m *APIResponse) MarshalTo(dAtA []byte) (int, error) {
 	return i, nil
 }
 
-func (m *Response) Marshal() (dAtA []byte, err error) {
+func (m *PrometheusData) Marshal() (dAtA []byte, err error) {
 	size := m.Size()
 	dAtA = make([]byte, size)
 	n, err := m.MarshalTo(dAtA)
@@ -869,7 +871,7 @@ func (m *Response) Marshal() (dAtA []byte, err error) {
 	return dAtA[:n], nil
 }
 
-func (m *Response) MarshalTo(dAtA []byte) (int, error) {
+func (m *PrometheusData) MarshalTo(dAtA []byte) (int, error) {
 	var i int
 	_ = i
 	var l int
@@ -1026,7 +1028,7 @@ func encodeVarintQueryrange(dAtA []byte, offset int, v uint64) int {
 	dAtA[offset] = uint8(v)
 	return offset + 1
 }
-func (m *Request) Size() (n int) {
+func (m *PrometheusRequest) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1054,7 +1056,7 @@ func (m *Request) Size() (n int) {
 	return n
 }
 
-func (m *APIResponse) Size() (n int) {
+func (m *PrometheusResponse) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1077,7 +1079,7 @@ func (m *APIResponse) Size() (n int) {
 	return n
 }
 
-func (m *Response) Size() (n int) {
+func (m *PrometheusData) Size() (n int) {
 	if m == nil {
 		return 0
 	}
@@ -1172,11 +1174,11 @@ func sovQueryrange(x uint64) (n int) {
 func sozQueryrange(x uint64) (n int) {
 	return sovQueryrange(uint64((x << 1) ^ uint64((int64(x) >> 63))))
 }
-func (this *Request) String() string {
+func (this *PrometheusRequest) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&Request{`,
+	s := strings.Join([]string{`&PrometheusRequest{`,
 		`Path:` + fmt.Sprintf("%v", this.Path) + `,`,
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
@@ -1187,24 +1189,24 @@ func (this *Request) String() string {
 	}, "")
 	return s
 }
-func (this *APIResponse) String() string {
+func (this *PrometheusResponse) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&APIResponse{`,
+	s := strings.Join([]string{`&PrometheusResponse{`,
 		`Status:` + fmt.Sprintf("%v", this.Status) + `,`,
-		`Data:` + strings.Replace(strings.Replace(this.Data.String(), "Response", "Response", 1), `&`, ``, 1) + `,`,
+		`Data:` + strings.Replace(strings.Replace(this.Data.String(), "PrometheusData", "PrometheusData", 1), `&`, ``, 1) + `,`,
 		`ErrorType:` + fmt.Sprintf("%v", this.ErrorType) + `,`,
 		`Error:` + fmt.Sprintf("%v", this.Error) + `,`,
 		`}`,
 	}, "")
 	return s
 }
-func (this *Response) String() string {
+func (this *PrometheusData) String() string {
 	if this == nil {
 		return "nil"
 	}
-	s := strings.Join([]string{`&Response{`,
+	s := strings.Join([]string{`&PrometheusData{`,
 		`ResultType:` + fmt.Sprintf("%v", this.ResultType) + `,`,
 		`Result:` + strings.Replace(strings.Replace(fmt.Sprintf("%v", this.Result), "SampleStream", "SampleStream", 1), `&`, ``, 1) + `,`,
 		`}`,
@@ -1240,7 +1242,7 @@ func (this *Extent) String() string {
 	s := strings.Join([]string{`&Extent{`,
 		`Start:` + fmt.Sprintf("%v", this.Start) + `,`,
 		`End:` + fmt.Sprintf("%v", this.End) + `,`,
-		`Response:` + strings.Replace(fmt.Sprintf("%v", this.Response), "APIResponse", "APIResponse", 1) + `,`,
+		`Response:` + strings.Replace(fmt.Sprintf("%v", this.Response), "Any", "types.Any", 1) + `,`,
 		`TraceId:` + fmt.Sprintf("%v", this.TraceId) + `,`,
 		`}`,
 	}, "")
@@ -1254,7 +1256,7 @@ func valueToStringQueryrange(v interface{}) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("*%v", pv)
 }
-func (m *Request) Unmarshal(dAtA []byte) error {
+func (m *PrometheusRequest) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1277,10 +1279,10 @@ func (m *Request) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Request: wiretype end group for non-group")
+			return fmt.Errorf("proto: PrometheusRequest: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Request: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PrometheusRequest: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1461,7 +1463,7 @@ func (m *Request) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *APIResponse) Unmarshal(dAtA []byte) error {
+func (m *PrometheusResponse) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1484,10 +1486,10 @@ func (m *APIResponse) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: APIResponse: wiretype end group for non-group")
+			return fmt.Errorf("proto: PrometheusResponse: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: APIResponse: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PrometheusResponse: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -1643,7 +1645,7 @@ func (m *APIResponse) Unmarshal(dAtA []byte) error {
 	}
 	return nil
 }
-func (m *Response) Unmarshal(dAtA []byte) error {
+func (m *PrometheusData) Unmarshal(dAtA []byte) error {
 	l := len(dAtA)
 	iNdEx := 0
 	for iNdEx < l {
@@ -1666,10 +1668,10 @@ func (m *Response) Unmarshal(dAtA []byte) error {
 		fieldNum := int32(wire >> 3)
 		wireType := int(wire & 0x7)
 		if wireType == 4 {
-			return fmt.Errorf("proto: Response: wiretype end group for non-group")
+			return fmt.Errorf("proto: PrometheusData: wiretype end group for non-group")
 		}
 		if fieldNum <= 0 {
-			return fmt.Errorf("proto: Response: illegal tag %d (wire type %d)", fieldNum, wire)
+			return fmt.Errorf("proto: PrometheusData: illegal tag %d (wire type %d)", fieldNum, wire)
 		}
 		switch fieldNum {
 		case 1:
@@ -2099,7 +2101,7 @@ func (m *Extent) Unmarshal(dAtA []byte) error {
 				return io.ErrUnexpectedEOF
 			}
 			if m.Response == nil {
-				m.Response = &APIResponse{}
+				m.Response = &types.Any{}
 			}
 			if err := m.Response.Unmarshal(dAtA[iNdEx:postIndex]); err != nil {
 				return err
