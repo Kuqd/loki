@@ -10,8 +10,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gogo/protobuf/proto"
-	types "github.com/gogo/protobuf/types"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/gogo/protobuf/types"
+	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
 	"github.com/uber/jaeger-client-go"
@@ -26,15 +26,41 @@ import (
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
 	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
+	SplitInterval     time.Duration `yaml:"split_interval"`
 }
 
 // RegisterFlags registers flags.
 func (cfg *ResultsCacheConfig) RegisterFlags(f *flag.FlagSet) {
 	cfg.CacheConfig.RegisterFlagsWithPrefix("frontend.", "", f)
 	f.DurationVar(&cfg.MaxCacheFreshness, "frontend.max-cache-freshness", 1*time.Minute, "Most recent allowed cacheable result, to prevent caching very recent results that might still be in flux.")
+	f.DurationVar(&cfg.SplitInterval, "frontend.cache-split-interval", 24*time.Hour, "The maximum interval expected for each request, results will be cached per single interval.")
 }
 
-type Extractor func(start, end int64, from Response) Response
+// Extractor is used by the cache to extract a subset of a response from a cache entry.
+type Extractor interface {
+	// Extract extracts a subset of a response from the `start` and `end` timestamps in milliseconds in the `from` response.
+	Extract(start, end int64, from Response) Response
+}
+
+// ExtractorFunc is a sugar syntax for declaring an Extractor from a function.
+type ExtractorFunc func(start, end int64, from Response) Response
+
+// Extract calls the `ExtractorFunc` to implements an `Extractor`.
+func (e ExtractorFunc) Extract(start, end int64, from Response) Response {
+	return e(start, end, from)
+}
+
+// PrometheusResponseExtractor is an `Extractor` for a Prometheus query range response.
+var PrometheusResponseExtractor = ExtractorFunc(func(start, end int64, from Response) Response {
+	promRes := from.(*PrometheusResponse)
+	return &PrometheusResponse{
+		Status: statusSuccess,
+		Data: PrometheusData{
+			ResultType: promRes.Data.ResultType,
+			Result:     extractMatrix(start, end, promRes.Data.Result),
+		},
+	}
+})
 
 type resultsCache struct {
 	logger log.Logger
@@ -44,11 +70,16 @@ type resultsCache struct {
 	limits Limits
 
 	extractor Extractor
-	codec     Codec
+	merger    Merger
 }
 
 // NewResultsCacheMiddleware creates results cache middleware from config.
-func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, codec Codec, extractor Extractor) (Middleware, error) {
+// The middleware cache result using a unique cache key for a given request (step,query,user) and interval.
+// The cache assumes that each request length (end-start) is below or equal the interval.
+// Each request starting from within the same interval will hit the same cache entry.
+// If the cache doesn't have the entire duration of the request cached, it will query the uncached parts and append them to the cache entries.
+// see `generateKey`.
+func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits Limits, merger Merger, extractor Extractor) (Middleware, error) {
 	c, err := cache.New(cfg.CacheConfig)
 	if err != nil {
 		return nil, err
@@ -61,7 +92,7 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 			next:      next,
 			cache:     c,
 			limits:    limits,
-			codec:     codec,
+			merger:    merger,
 			extractor: extractor,
 		}
 	}), nil
@@ -74,8 +105,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 	}
 
 	var (
-		day      = r.GetStart() / millisecondPerDay
-		key      = fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), day)
+		key      = generateKey(userID, r, s.cfg.SplitInterval)
 		extents  []Extent
 		response Response
 	)
@@ -133,7 +163,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return nil, nil, err
 	}
 	if len(requests) == 0 {
-		response, err := s.codec.MergeResponse(responses...)
+		response, err := s.merger.MergeResponse(responses...)
 		// No downstream requests so no need to write back to the cache.
 		return response, nil, err
 	}
@@ -156,41 +186,74 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 	})
 
 	// Merge any extents - they're guaranteed not to overlap.
-	accumulator, mergedExtents := extents[0], make([]Extent, 0, len(extents))
+	accumulator, err := newAccumulator(extents[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	mergedExtents := make([]Extent, 0, len(extents))
+
 	for i := 1; i < len(extents); i++ {
 		if accumulator.End+r.GetStep() < extents[i].Start {
-			mergedExtents = append(mergedExtents, accumulator)
-			accumulator = extents[i]
+			mergedExtents, err = merge(mergedExtents, accumulator)
+			if err != nil {
+				return nil, nil, err
+			}
+			accumulator, err = newAccumulator(extents[i])
+			if err != nil {
+				return nil, nil, err
+			}
 			continue
 		}
 
-		log.Log("msg", "merging extent", "start", accumulator.Start, "old_end", accumulator.End, "new_end", extents[i].End, "from_trace", accumulator.TraceId, "with_trace", accumulator.TraceId)
-
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
-		accRes, err := accumulator.toResponse()
-		if err != nil {
-			return nil, nil, err
-		}
 		currentRes, err := extents[i].toResponse()
 		if err != nil {
 			return nil, nil, err
 		}
-		merged, err := s.codec.MergeResponse(accRes, currentRes)
+		merged, err := s.merger.MergeResponse(accumulator.Response, currentRes)
 		if err != nil {
 			return nil, nil, err
 		}
-		any, err := types.MarshalAny(merged)
-		if err != nil {
-			return nil, nil, err
-		}
-		accumulator.Response = any
-
+		accumulator.Response = merged
 	}
-	mergedExtents = append(mergedExtents, accumulator)
 
-	response, err := s.codec.MergeResponse(responses...)
+	mergedExtents, err = merge(mergedExtents, accumulator)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	response, err := s.merger.MergeResponse(responses...)
 	return response, mergedExtents, err
+}
+
+type accumulator struct {
+	Response
+	Extent
+}
+
+func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
+	any, err := types.MarshalAny(acc.Response)
+	if err != nil {
+		return nil, err
+	}
+	return append(extents, Extent{
+		Start:    acc.Extent.Start,
+		End:      acc.Extent.End,
+		Response: any,
+		TraceId:  acc.Extent.TraceId,
+	}), nil
+}
+
+func newAccumulator(base Extent) (*accumulator, error) {
+	res, err := base.toResponse()
+	if err != nil {
+		return nil, err
+	}
+	return &accumulator{
+		Response: res,
+		Extent:   base,
+	}, nil
 }
 
 func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
@@ -207,7 +270,7 @@ func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
 }
 
 // partition calculates the required requests to satisfy req given the cached data.
-func partition(req Request, extents []Extent, extract Extractor) ([]Request, []Response, error) {
+func partition(req Request, extents []Extent, extractor Extractor) ([]Request, []Response, error) {
 	var requests []Request
 	var cachedResponses []Response
 	start := req.GetStart()
@@ -228,7 +291,7 @@ func partition(req Request, extents []Extent, extract Extractor) ([]Request, []R
 			return nil, nil, err
 		}
 		// extract the overlap from the cached extent.
-		cachedResponses = append(cachedResponses, extract(start, req.GetEnd(), res))
+		cachedResponses = append(cachedResponses, extractor.Extract(start, req.GetEnd(), res))
 		start = extent.End
 	}
 
@@ -250,7 +313,7 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 			if err != nil {
 				return nil, err
 			}
-			extracted := s.extractor(extents[i].Start, maxCacheTime, res)
+			extracted := s.extractor.Extract(extents[i].Start, maxCacheTime, res)
 			any, err := types.MarshalAny(extracted)
 			if err != nil {
 				return nil, err
@@ -259,6 +322,12 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 		}
 	}
 	return extents, nil
+}
+
+// generateKey generates a cache key based on the userID, Request and interval.
+func generateKey(userID string, r Request, interval time.Duration) string {
+	currentInterval := r.GetStart() / int64(interval/time.Millisecond)
+	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
 func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
@@ -281,6 +350,13 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 
 	if resp.Key != key {
 		return nil, false
+	}
+
+	// Refreshes the cache if it contains an old proto schema.
+	for _, e := range resp.Extents {
+		if e.Response == nil {
+			return nil, false
+		}
 	}
 
 	return resp.Extents, true
@@ -311,17 +387,6 @@ func jaegerTraceID(ctx context.Context) string {
 	}
 
 	return spanContext.TraceID().String()
-}
-
-func PrometheusResponseExtractor(start, end int64, from Response) Response {
-	promRes := from.(*PrometheusResponse)
-	return &PrometheusResponse{
-		Status: statusSuccess,
-		Data: PrometheusData{
-			ResultType: promRes.Data.ResultType,
-			Result:     extractMatrix(start, end, promRes.Data.Result),
-		},
-	}
 }
 
 func extractMatrix(start, end int64, matrix []SampleStream) []SampleStream {

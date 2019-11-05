@@ -4,18 +4,19 @@ import (
 	"bytes"
 	"context"
 	"io/ioutil"
-	math "math"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
 	"strconv"
-	time "time"
+	"time"
 
-	proto "github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	jsoniter "github.com/json-iterator/go"
-	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/timestamp"
 	"github.com/weaveworks/common/httpgrpc"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
@@ -23,65 +24,75 @@ import (
 
 const statusSuccess = "success"
 
-type Codec interface {
-	ParseRequest(context.Context, *http.Request) (Request, error)
-	ParseResponse(context.Context, *http.Response) (Response, error)
-	MergeResponse(...Response) (Response, error)
-}
-
-type Request interface {
-	ToHTTPRequest(ctx context.Context) (*http.Request, error)
-	GetStart() int64
-	GetEnd() int64
-	GetStep() int64
-	GetQuery() string
-	WithStartEnd(int64, int64) Request
-	proto.Message
-}
-
-type Response interface {
-	ToHTTPResponse(ctx context.Context) (*http.Response, error)
-	proto.Message
-}
-
 var (
 	matrix            = model.ValMatrix.String()
 	json              = jsoniter.ConfigCompatibleWithStandardLibrary
 	errEndBeforeStart = httpgrpc.Errorf(http.StatusBadRequest, "end timestamp must not be before start time")
 	errNegativeStep   = httpgrpc.Errorf(http.StatusBadRequest, "zero or negative query resolution step widths are not accepted. Try a positive integer")
 	errStepTooSmall   = httpgrpc.Errorf(http.StatusBadRequest, "exceeded maximum resolution of 11,000 points per timeseries. Try decreasing the query resolution (?step=XX)")
-	PrometheusCodec   = &prometheusCodec{}
+
+	// PrometheusCodec is a codec to encode and decode Prometheus query range requests and responses.
+	PrometheusCodec Codec = &prometheusCodec{}
 )
+
+// Codec is used to encode/decode query range requests and responses so they can be passed down to middlewares.
+type Codec interface {
+	Merger
+	// DecodeRequest decodes a Request from an http request.
+	DecodeRequest(context.Context, *http.Request) (Request, error)
+	// DecodeResponse decodes a Response from an http response..
+	DecodeResponse(context.Context, *http.Response) (Response, error)
+	// EncodeRequest encodes a Request into an http request.
+	EncodeRequest(context.Context, Request) (*http.Request, error)
+	// EncodeResponse encodes a Response into an http response.
+	EncodeResponse(context.Context, Response) (*http.Response, error)
+}
+
+// Merger is used by middlewares making multiple requests to merge back all responses into a single one.
+type Merger interface {
+	// MergeResponse merges responses from multiple requests into a single Response
+	MergeResponse(...Response) (Response, error)
+}
+
+// Request represents a query range request that can be process by middlewares.
+type Request interface {
+	// GetStart returns the start timestamp of the request in milliseconds.
+	GetStart() int64
+	// GetEnd returns the end timestamp of the request in milliseconds.
+	GetEnd() int64
+	// GetStep returns the step of the request in milliseconds.
+	GetStep() int64
+	// GetQuery returns the query of the request.
+	GetQuery() string
+	// WithStartEnd clone the current request with different start and end timestamp.
+	WithStartEnd(int64, int64) Request
+	proto.Message
+}
+
+// Response represents a query range response.
+type Response interface {
+	proto.Message
+}
+
+// LogToSpan writes information about this request to the OpenTracing span
+// in the context, if there is one.
+func LogToSpan(ctx context.Context, r Request) {
+	if span := opentracing.SpanFromContext(ctx); span != nil {
+		span.LogFields(otlog.String("query", r.GetQuery()),
+			otlog.String("start", timestamp.Time(r.GetStart()).String()),
+			otlog.String("end", timestamp.Time(r.GetEnd()).String()),
+			otlog.Int64("step (ms)", r.GetStep()))
+	}
+}
 
 type prometheusCodec struct{}
 
+// WithStartEnd clones the current `PrometheusRequest` with a new `start` and `end` timestamp.
 func (q *PrometheusRequest) WithStartEnd(start int64, end int64) Request {
 	new := *q
 	new.Start = start
 	new.End = end
 	return &new
-}
-
-func (q PrometheusRequest) ToHTTPRequest(ctx context.Context) (*http.Request, error) {
-	params := url.Values{
-		"start": []string{encodeTime(q.Start)},
-		"end":   []string{encodeTime(q.End)},
-		"step":  []string{encodeDurationMs(q.Step)},
-		"query": []string{q.Query},
-	}
-	u := &url.URL{
-		Path:     q.Path,
-		RawQuery: params.Encode(),
-	}
-	req := &http.Request{
-		Method:     "GET",
-		RequestURI: u.String(), // This is what the httpgrpc code looks at.
-		URL:        u,
-		Body:       http.NoBody,
-		Header:     http.Header{},
-	}
-
-	return req.WithContext(ctx), nil
 }
 
 type byFirstTime []*PrometheusResponse
@@ -124,7 +135,7 @@ func (prometheusCodec) MergeResponse(responses ...Response) (Response, error) {
 	}, nil
 }
 
-func (prometheusCodec) ParseRequest(_ context.Context, r *http.Request) (Request, error) {
+func (prometheusCodec) DecodeRequest(_ context.Context, r *http.Request) (Request, error) {
 	var result PrometheusRequest
 	var err error
 	result.Start, err = ParseTime(r.FormValue("start"))
@@ -161,7 +172,33 @@ func (prometheusCodec) ParseRequest(_ context.Context, r *http.Request) (Request
 	return &result, nil
 }
 
-func (prometheusCodec) ParseResponse(ctx context.Context, r *http.Response) (Response, error) {
+func (prometheusCodec) EncodeRequest(ctx context.Context, r Request) (*http.Request, error) {
+	promReq, ok := r.(*PrometheusRequest)
+	if !ok {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
+	}
+	params := url.Values{
+		"start": []string{encodeTime(promReq.Start)},
+		"end":   []string{encodeTime(promReq.End)},
+		"step":  []string{encodeDurationMs(promReq.Step)},
+		"query": []string{promReq.Query},
+	}
+	u := &url.URL{
+		Path:     promReq.Path,
+		RawQuery: params.Encode(),
+	}
+	req := &http.Request{
+		Method:     "GET",
+		RequestURI: u.String(), // This is what the httpgrpc code looks at.
+		URL:        u,
+		Body:       http.NoBody,
+		Header:     http.Header{},
+	}
+
+	return req.WithContext(ctx), nil
+}
+
+func (prometheusCodec) DecodeResponse(ctx context.Context, r *http.Response) (Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -185,9 +222,14 @@ func (prometheusCodec) ParseResponse(ctx context.Context, r *http.Response) (Res
 	return &resp, nil
 }
 
-func (a *PrometheusResponse) ToHTTPResponse(ctx context.Context) (*http.Response, error) {
+func (prometheusCodec) EncodeResponse(ctx context.Context, res Response) (*http.Response, error) {
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
+
+	a, ok := res.(*PrometheusResponse)
+	if !ok {
+		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
+	}
 
 	b, err := json.Marshal(a)
 	if err != nil {

@@ -118,6 +118,7 @@ github.com/coreos/pkg/dlopen
 # github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953 => github.com/cyriltovena/cortex v0.0.0-20191002163047-55c3a014c601
 # github.com/cortexproject/cortex v0.2.0 => github.com/cyriltovena/cortex v0.0.0-20191008175502-0d692886f84e
 # github.com/cortexproject/cortex v0.2.0 => github.com/cyriltovena/cortex v0.0.0-20191011202138-bfe04f6affb9
+# github.com/cortexproject/cortex v0.2.0 => github.com/cyriltovena/cortex v0.0.0-20191104212333-fb25170c1b80
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/cache

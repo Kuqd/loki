@@ -23,36 +23,31 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
-	"github.com/prometheus/prometheus/pkg/timestamp"
-	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/util/validation"
 )
+
+const day = 24 * time.Hour
 
 // Config for query_range middleware chain.
 type Config struct {
-	SplitQueriesByDay    bool `yaml:"split_queries_by_day"`
-	AlignQueriesWithStep bool `yaml:"align_queries_with_step"`
-	ResultsCacheConfig   `yaml:"results_cache"`
-	CacheResults         bool `yaml:"cache_results"`
-	MaxRetries           int  `yaml:"max_retries"`
+	SplitQueriesByInterval time.Duration `yaml:"split_queries_by_interval"`
+	SplitQueriesByDay      bool          `yaml:"split_queries_by_day"`
+	AlignQueriesWithStep   bool          `yaml:"align_queries_with_step"`
+	ResultsCacheConfig     `yaml:"results_cache"`
+	CacheResults           bool `yaml:"cache_results"`
+	MaxRetries             int  `yaml:"max_retries"`
 }
 
 // RegisterFlags adds the flags required to config this to the given FlagSet.
 func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
-	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Split queries by day and execute in parallel.")
+	f.IntVar(&cfg.MaxRetries, "querier.max-retries-per-request", 5, "Maximum number of retries for a single request; beyond this, the downstream error is returned.")
+	f.BoolVar(&cfg.SplitQueriesByDay, "querier.split-queries-by-day", false, "Deprecated: Split queries by day and execute in parallel.")
+	f.DurationVar(&cfg.SplitQueriesByInterval, "querier.split-queries-by-interval", 0, "Split queries by an interval and execute in parallel, 0 disables it. You should use an a multiple of 24 hours (same as the storage bucketing scheme), to avoid queriers downloading and processing the same chunks.")
 	f.BoolVar(&cfg.AlignQueriesWithStep, "querier.align-querier-with-step", false, "Mutate incoming queries to align their start and end with their step.")
 	f.BoolVar(&cfg.CacheResults, "querier.cache-results", false, "Cache query results.")
 	cfg.ResultsCacheConfig.RegisterFlags(f)
-}
-
-// Limits allows us to specify per-tenant runtime limits on the behaviour of
-// the query handling code.
-type Limits interface {
-	MaxQueryLength(string) time.Duration
-	MaxQueryParallelism(string) int
 }
 
 // HandlerFunc is like http.HandlerFunc, but for Handler.
@@ -92,14 +87,18 @@ func MergeMiddlewares(middleware ...Middleware) Middleware {
 	})
 }
 
-// NewTripperware returns a Tripperware configured with middlewares to align, split, retry and cache requests.
+// NewTripperware returns a Tripperware configured with middlewares to limit, align, split, retry and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cacheExtractor Extractor) (frontend.Tripperware, error) {
-	var queryRangeMiddleware []Middleware
+	queryRangeMiddleware := []Middleware{LimitsMiddleware(limits)}
 	if cfg.AlignQueriesWithStep {
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
-	if cfg.SplitQueriesByDay {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByDayMiddleware(limits, codec))
+	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
+	if cfg.SplitQueriesByDay == true {
+		cfg.SplitQueriesByInterval = day
+	}
+	if cfg.SplitQueriesByInterval != 0 {
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
@@ -115,7 +114,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		// Finally, if the user selected any query range middleware, stitch it in.
 		if len(queryRangeMiddleware) > 0 {
-			return NewRoundTripper(next, MergeMiddlewares(queryRangeMiddleware...).Wrap(&ToRoundTripperMiddleware{Next: next, Codec: codec}), limits, codec)
+			return NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
 	}), nil
@@ -124,20 +123,18 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 type roundTripper struct {
 	next    http.RoundTripper
 	handler Handler
-	limits  Limits
-
-	codec Codec
+	codec   Codec
 }
 
-// NewRoundTripper wraps a QueryRange Handler and allows it to send requests
-// to a http.Roundtripper.
-func NewRoundTripper(next http.RoundTripper, handler Handler, limits Limits, codec Codec) http.RoundTripper {
-	return roundTripper{
-		next:    next,
-		handler: handler,
-		limits:  limits,
-		codec:   codec,
+// NewRoundTripper merges a set of middlewares into an handler, then inject it into the `next` roundtripper
+// using the codec to translate requests and responses.
+func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middleware) http.RoundTripper {
+	transport := roundTripper{
+		next:  next,
+		codec: codec,
 	}
+	transport.handler = MergeMiddlewares(middlewares...).Wrap(&transport)
+	return transport
 }
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -145,39 +142,24 @@ func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 		return q.next.RoundTrip(r)
 	}
 
-	request, err := q.codec.ParseRequest(r.Context(), r)
+	request, err := q.codec.DecodeRequest(r.Context(), r)
 	if err != nil {
 		return nil, err
 	}
 
-	userid, err := user.ExtractOrgID(r.Context())
-	if err != nil {
-		return nil, err
-	}
-
-	maxQueryLen := q.limits.MaxQueryLength(userid)
-	queryLen := timestamp.Time(request.GetEnd()).Sub(timestamp.Time(request.GetStart()))
-	if maxQueryLen != 0 && queryLen > maxQueryLen {
-		return nil, httpgrpc.Errorf(http.StatusBadRequest, validation.ErrQueryTooLong, queryLen, maxQueryLen)
-	}
+	LogToSpan(r.Context(), request)
 
 	response, err := q.handler.Do(r.Context(), request)
 	if err != nil {
 		return nil, err
 	}
 
-	return response.ToHTTPResponse(r.Context())
-}
-
-// ToRoundTripperMiddleware not quite sure what this does.
-type ToRoundTripperMiddleware struct {
-	Next  http.RoundTripper
-	Codec Codec
+	return q.codec.EncodeResponse(r.Context(), response)
 }
 
 // Do implements Handler.
-func (q ToRoundTripperMiddleware) Do(ctx context.Context, r Request) (Response, error) {
-	request, err := r.ToHTTPRequest(ctx)
+func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
+	request, err := q.codec.EncodeRequest(ctx, r)
 	if err != nil {
 		return nil, err
 	}
@@ -186,11 +168,11 @@ func (q ToRoundTripperMiddleware) Do(ctx context.Context, r Request) (Response, 
 		return nil, err
 	}
 
-	response, err := q.Next.RoundTrip(request)
+	response, err := q.next.RoundTrip(request)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return q.Codec.ParseResponse(ctx, response)
+	return q.codec.DecodeResponse(ctx, response)
 }

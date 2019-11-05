@@ -36,7 +36,6 @@ var (
 		Help:      "Number of queries in the queue.",
 	})
 
-	errServerClosing  = httpgrpc.Errorf(http.StatusTeapot, "server closing down")
 	errTooManyRequest = httpgrpc.Errorf(http.StatusTooManyRequests, "too many outstanding requests")
 	errCanceled       = httpgrpc.Errorf(http.StatusInternalServerError, "context cancelled")
 )
@@ -88,7 +87,7 @@ func New(cfg Config, log log.Logger) (*Frontend, error) {
 
 	// The front end implements http.RoundTripper using a GRPC worker queue by default.
 	f.roundTripper = f
-	// However if the user has specified a downstream Prometheus, then we should
+	// However if the user has specified a downstream Prometheus, then we should use that.
 	if cfg.DownstreamURL != "" {
 		u, err := url.Parse(cfg.DownstreamURL)
 		if err != nil {
