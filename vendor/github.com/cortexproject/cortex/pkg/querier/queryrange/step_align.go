@@ -17,5 +17,7 @@ type stepAlign struct {
 }
 
 func (s stepAlign) Do(ctx context.Context, r Request) (Response, error) {
-	return s.next.Do(ctx, r.WithStartEnd((r.GetStart()/r.GetStep())*r.GetStep(), (r.GetEnd()/r.GetStep())*r.GetStep()))
+	start := (r.GetStart() / r.GetStep()) * r.GetStep()
+	end := (r.GetEnd() / r.GetStep()) * r.GetStep()
+	return s.next.Do(ctx, r.WithStartEnd(start, end))
 }
