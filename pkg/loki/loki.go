@@ -6,6 +6,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -41,6 +42,7 @@ type Config struct {
 	TableManager     chunk.TableManagerConfig `yaml:"table_manager,omitempty"`
 	Worker           frontend.WorkerConfig    `yaml:"frontend_worker,omitempty"`
 	Frontend         frontend.Config          `yaml:"frontend,omitempty"`
+	QueryRange       queryrange.Config        `yaml:"query_range,omitempty"`
 }
 
 // RegisterFlags registers flag.

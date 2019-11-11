@@ -1,11 +1,9 @@
 package queryrange
 
 import (
-	"context"
 	"net/http"
 	"strings"
 
-	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logql"
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
@@ -16,7 +14,7 @@ import (
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, error) {
-	metricsTripperware, err := queryrange.NewTripperware(cfg, log, limits, &lokiCodec{}, queryrange.PrometheusResponseExtractor)
+	metricsTripperware, err := queryrange.NewTripperware(cfg, log, limits, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return nil, err
 	}
@@ -38,23 +36,4 @@ func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Lim
 			return next.RoundTrip(req)
 		})
 	}), nil
-}
-
-type lokiCodec struct {
-	queryrange.Codec
-}
-
-type request struct {
-	*loghttp.RangeQuery
-}
-
-func (l *lokiCodec) ParseRequest(_ context.Context, r *http.Request) (queryrange.Request, error) {
-	req, err := loghttp.ParseRangeQuery(r)
-	if err != nil {
-		return nil, err
-	}
-	return &queryrange.PrometheusRequest{
-		Query:,
-		Path:  r.URL.Path,
-	}, nil
 }

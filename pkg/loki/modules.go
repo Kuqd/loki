@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/ingester"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/querier"
+	"github.com/grafana/loki/pkg/querier/queryrange"
 	loki_storage "github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
 )
@@ -263,11 +264,11 @@ func (t *Loki) initQueryFrontend() (err error) {
 	if err != nil {
 		return
 	}
-	// tripperware, err := queryrange.NewTripperware(cfg.QueryRange, util.Logger, t.overrides)
-	// if err != nil {
-	// 	return err
-	// }
-	// t.frontend.Wrap("query_range", tripperware)
+	tripperware, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides)
+	if err != nil {
+		return err
+	}
+	t.frontend.Wrap(tripperware)
 
 	frontend.RegisterFrontendServer(t.server.GRPC, t.frontend)
 	t.server.HTTP.PathPrefix(t.cfg.HTTPPrefix).Handler(
