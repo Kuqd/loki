@@ -3,7 +3,6 @@ package queryrange
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -13,14 +12,16 @@ import (
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logql/marshal"
+	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
 	"github.com/weaveworks/common/httpgrpc"
 )
 
-type codec struct {
-	queryrange.Codec
-}
+var lokiCodec = &codec{}
+
+type codec struct{}
 
 func (r *LokiRequest) GetEnd() int64 {
 	return r.EndTs.UnixNano() / 1e6
@@ -129,16 +130,37 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response) (queryrange.R
 }
 
 func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http.Response, error) {
-	//todo
 	sp, _ := opentracing.StartSpanFromContext(ctx, "APIResponse.ToHTTPResponse")
 	defer sp.Finish()
 
-	a, ok := res.(*LokiResponse)
+	if _, ok := res.(*queryrange.PrometheusResponse); ok {
+		return queryrange.PrometheusCodec.EncodeResponse(ctx, res)
+	}
+
+	proto, ok := res.(*LokiResponse)
 	if !ok {
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	b, err := json.Marshal(a)
+	streams := make(loghttp.Streams, len(proto.Data.Result))
+
+	for i, stream := range proto.Data.Result {
+		s, err := marshal.NewStream(&stream)
+		if err != nil {
+			return nil, err
+		}
+		streams[i] = s
+	}
+
+	queryRes := loghttp.QueryResponse{
+		Status: proto.Status,
+		Data: loghttp.QueryResponseData{
+			ResultType: loghttp.ResultType(proto.Data.ResultType),
+			Result:     streams,
+		},
+	}
+
+	b, err := json.Marshal(queryRes)
 	if err != nil {
 		return nil, err
 	}
@@ -153,6 +175,24 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil
+}
+
+func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
+	// todo we might want to cast this correctly. not sure about the impact yet.
+	if len(responses) == 0 {
+		return &queryrange.PrometheusResponse{
+			Status: loghttp.QueryStatusSuccess,
+		}, nil
+	}
+	if _, ok := responses[0].(*queryrange.PrometheusResponse); ok {
+		return queryrange.PrometheusCodec.MergeResponse(responses...)
+	}
+	protos := make([]*LokiResponse, 0, len(responses))
+	for _, p := range responses {
+		protos = append(protos, p.(*LokiResponse))
+	}
+	// merge responses.
+	return nil, nil
 }
 
 func toProto(m loghttp.Matrix) []queryrange.SampleStream {

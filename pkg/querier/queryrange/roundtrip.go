@@ -14,7 +14,7 @@ import (
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, error) {
-	metricsTripperware, err := queryrange.NewTripperware(cfg, log, limits, queryrange.PrometheusCodec, queryrange.PrometheusResponseExtractor)
+	metricsTripperware, err := queryrange.NewTripperware(cfg, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return nil, err
 	}
