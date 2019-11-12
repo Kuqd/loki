@@ -21,6 +21,7 @@ message LokiRequest {
 
 message LokiResponse {
   string Status = 1 [(gogoproto.jsontag) = "status"];
+  logproto.Direction direction = 6;
   LokiData Data = 2 [(gogoproto.nullable) = false, (gogoproto.jsontag) = "data,omitempty"];
   string ErrorType = 3 [(gogoproto.jsontag) = "errorType,omitempty"];
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];

@@ -26,7 +26,7 @@ import (
 type ResultsCacheConfig struct {
 	CacheConfig       cache.Config  `yaml:"cache"`
 	MaxCacheFreshness time.Duration `yaml:"max_freshness"`
-	SplitInterval     time.Duration `yaml:"split_interval"`
+	SplitInterval     time.Duration `yaml:"cache_split_interval"`
 }
 
 // RegisterFlags registers flags.

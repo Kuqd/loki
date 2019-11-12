@@ -3,15 +3,18 @@ package queryrange
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"sort"
 	"time"
 
 	"github.com/cortexproject/cortex/pkg/ingester/client"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/loghttp"
+	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
@@ -83,7 +86,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 	return req.WithContext(ctx), nil
 }
 
-func (codec) DecodeResponse(ctx context.Context, r *http.Response) (queryrange.Response, error) {
+func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrange.Request) (queryrange.Response, error) {
 	if r.StatusCode/100 != 2 {
 		body, _ := ioutil.ReadAll(r.Body)
 		return nil, httpgrpc.Errorf(r.StatusCode, string(body))
@@ -118,7 +121,8 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response) (queryrange.R
 		}, nil
 	case loghttp.ResultTypeStream:
 		return &LokiResponse{
-			Status: loghttp.QueryStatusSuccess,
+			Status:    loghttp.QueryStatusSuccess,
+			Direction: req.(*LokiRequest).Direction,
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
@@ -177,22 +181,90 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 	return &resp, nil
 }
 
+type byMinTime []*LokiResponse
+
+func (a byMinTime) Len() int           { return len(a) }
+func (a byMinTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byMinTime) Less(i, j int) bool { return a[i].fistTime() < a[j].fistTime() }
+
+type byMaxTime []*LokiResponse
+
+func (a byMaxTime) Len() int           { return len(a) }
+func (a byMaxTime) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a byMaxTime) Less(i, j int) bool { return a[i].fistTime() > a[j].fistTime() }
+
+func (resp *LokiResponse) fistTime() int64 {
+	result := resp.Data.Result
+	if len(result) == 0 {
+		return -1
+	}
+	if len(result[0].Entries) == 0 {
+		return -1
+	}
+	return result[0].Entries[0].Timestamp.UnixNano()
+}
+
 func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Response, error) {
-	// todo we might want to cast this correctly. not sure about the impact yet.
 	if len(responses) == 0 {
-		return &queryrange.PrometheusResponse{
-			Status: loghttp.QueryStatusSuccess,
-		}, nil
+		return nil, errors.New("merging responses requires at least one response")
 	}
 	if _, ok := responses[0].(*queryrange.PrometheusResponse); ok {
 		return queryrange.PrometheusCodec.MergeResponse(responses...)
 	}
-	protos := make([]*LokiResponse, 0, len(responses))
-	for _, p := range responses {
-		protos = append(protos, p.(*LokiResponse))
+	lokiRes, ok := responses[0].(*LokiResponse)
+	if !ok {
+		return nil, errors.New("unexpected response type while merging")
 	}
-	// merge responses.
-	return nil, nil
+
+	lokiResponses := make([]*LokiResponse, 0, len(responses))
+	for _, res := range responses {
+		lokiResponses = append(lokiResponses, res.(*LokiResponse))
+	}
+
+	if lokiRes.Direction == logproto.FORWARD {
+		sort.Sort(byMinTime(lokiResponses))
+	} else {
+		sort.Sort(byMaxTime(lokiResponses))
+	}
+
+	return &LokiResponse{
+		Status:    loghttp.QueryStatusSuccess,
+		Direction: lokiRes.Direction,
+		Data: LokiData{
+			ResultType: loghttp.ResultTypeStream,
+			Result:     mergeStreams(lokiResponses),
+		},
+	}, nil
+}
+
+func mergeStreams(resps []*LokiResponse) []logproto.Stream {
+	output := map[string]*logproto.Stream{}
+	for _, resp := range resps {
+		for _, stream := range resp.Data.Result {
+			lbs := stream.Labels
+			existing, ok := output[lbs]
+			if !ok {
+				existing = &logproto.Stream{
+					Labels: lbs,
+				}
+			}
+			existing.Entries = append(existing.Entries, stream.Entries...)
+			output[lbs] = existing
+		}
+	}
+
+	keys := make([]string, 0, len(output))
+	for key := range output {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	result := make([]logproto.Stream, 0, len(output))
+	for _, key := range keys {
+		result = append(result, *output[key])
+	}
+
+	return result
 }
 
 func toProto(m loghttp.Matrix) []queryrange.SampleStream {

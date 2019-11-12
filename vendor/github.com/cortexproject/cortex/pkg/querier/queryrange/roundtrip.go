@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/weaveworks/common/user"
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
@@ -94,11 +95,12 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, codec Codec, cach
 		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("step_align"), StepAlignMiddleware)
 	}
 	// SplitQueriesByDay is deprecated use SplitQueriesByInterval.
-	if cfg.SplitQueriesByDay == true {
+	if cfg.SplitQueriesByDay {
+		level.Warn(log).Log("msg", "flag querier.split-queries-by-day (or config split_queries_by_day) is deprecated, use querier.split-queries-by-interval instead.")
 		cfg.SplitQueriesByInterval = day
 	}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_day"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
 	if cfg.CacheResults {
 		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits, codec, cacheExtractor)
@@ -174,5 +176,5 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return q.codec.DecodeResponse(ctx, response)
+	return q.codec.DecodeResponse(ctx, response,r)
 }

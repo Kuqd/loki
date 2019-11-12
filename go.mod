@@ -5,7 +5,6 @@ go 1.13
 require (
 	github.com/Azure/go-ansiterm v0.0.0-20170929234023-d6e3b3328b78 // indirect
 	github.com/Microsoft/go-winio v0.4.12 // indirect
-	github.com/aws/aws-sdk-go v1.23.13 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.1.1
 	github.com/containerd/fifo v0.0.0-20190226154929-a9fb20d87448 // indirect
@@ -51,7 +50,6 @@ require (
 	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
-	go.uber.org/atomic v1.4.0 // indirect
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0
@@ -74,4 +72,4 @@ replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 // Override reference causing proxy error.  Otherwise it attempts to download https://proxy.golang.org/golang.org/x/net/@v/v0.0.0-20190813000000-74dc4d7220e7.info
 replace golang.org/x/net => golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 
-replace github.com/cortexproject/cortex => github.com/cyriltovena/cortex v0.0.0-20191104212333-fb25170c1b80
+replace github.com/cortexproject/cortex => github.com/cyriltovena/cortex v0.0.0-20191112201443-a130bd69fad1
