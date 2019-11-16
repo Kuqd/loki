@@ -174,7 +174,7 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 		}
 
 		if err := w.process(c); err != nil {
-			level.Error(w.log).Log("msg", "error processing requests", "err", err,"req",c)
+			level.Error(w.log).Log("msg", "error processing requests", "err", err)
 			backoff.Wait()
 			continue
 		}
@@ -203,6 +203,7 @@ func (w *worker) process(c Frontend_ProcessClient) error {
 		go func() {
 			response, err := w.server.Handle(ctx, request.HttpRequest)
 			if err != nil {
+				level.Error(w.log).Log("msg", "error serving requests", "err", err, "HttpRequest", request.HttpRequest)
 				var ok bool
 				response, ok = httpgrpc.HTTPResponseFromError(err)
 				if !ok {
