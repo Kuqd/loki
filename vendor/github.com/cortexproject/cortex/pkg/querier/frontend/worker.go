@@ -174,7 +174,7 @@ func (w *worker) runOne(ctx context.Context, client FrontendClient) {
 		}
 
 		if err := w.process(c); err != nil {
-			level.Error(w.log).Log("msg", "error processing requests", "err", err)
+			level.Error(w.log).Log("msg", "error processing requests", "err", err,"req",c)
 			backoff.Wait()
 			continue
 		}
