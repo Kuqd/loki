@@ -203,7 +203,6 @@ func (w *worker) process(c Frontend_ProcessClient) error {
 		go func() {
 			response, err := w.server.Handle(ctx, request.HttpRequest)
 			if err != nil {
-				level.Error(w.log).Log("msg", "error serving requests", "err", err, "HttpRequest", request.HttpRequest)
 				var ok bool
 				response, ok = httpgrpc.HTTPResponseFromError(err)
 				if !ok {
