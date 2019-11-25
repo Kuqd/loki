@@ -106,7 +106,19 @@ func (t *Loki) setupAuthMiddleware() {
 			middleware.ServerUserHeaderInterceptor,
 		}
 		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			middleware.StreamServerUserHeaderInterceptor,
+			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+				switch info.FullMethod {
+				// Don't check auth header on TransferChunks, as we weren't originally
+				// sending it and this could cause transfers to fail on update.
+				//
+				// Also don't check auth /frontend.Frontend/Process, as this handles
+				// queries for multiple users.
+				case "/frontend.Frontend/Process":
+					return handler(srv, ss)
+				default:
+					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
+				}
+			},
 		}
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {

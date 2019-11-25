@@ -152,6 +152,7 @@ func (t *Loki) stopDistributor() (err error) {
 }
 
 func (t *Loki) initQuerier() (err error) {
+	level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
 	t.worker, err = frontend.NewWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.server.HTTPServer.Handler), util.Logger)
 	if err != nil {
 		return
@@ -260,10 +261,15 @@ func (t *Loki) stopStore() error {
 }
 
 func (t *Loki) initQueryFrontend() (err error) {
+	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
 	t.frontend, err = frontend.New(t.cfg.Frontend, util.Logger)
 	if err != nil {
 		return
 	}
+	level.Debug(util.Logger).Log("msg", "initializing query range tripperware",
+		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
+		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
+	)
 	tripperware, err := queryrange.NewTripperware(t.cfg.QueryRange, util.Logger, t.overrides)
 	if err != nil {
 		return err
