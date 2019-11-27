@@ -4,12 +4,10 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/grafana/loki/pkg/logql"
-
+	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
-
-	"github.com/cortexproject/cortex/pkg/querier/frontend"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
@@ -18,6 +16,7 @@ func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Lim
 	if err != nil {
 		return nil, err
 	}
+
 	return frontend.Tripperware(func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		return frontend.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
