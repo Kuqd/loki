@@ -35,7 +35,7 @@ func TestMetricsTripperware(t *testing.T) {
 	lreq := &LokiRequest{
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
-		Step:      30,
+		Step:      30000, //30sec
 		StartTs:   now.Add(-6 * time.Hour),
 		EndTs:     now,
 		Direction: logproto.FORWARD,

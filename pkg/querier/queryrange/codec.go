@@ -52,8 +52,9 @@ func (codec) DecodeRequest(_ context.Context, r *http.Request) (queryrange.Reque
 		Direction: req.Direction,
 		StartTs:   req.Start,
 		EndTs:     req.End,
-		Step:      int64(req.Step / time.Millisecond),
-		Path:      r.URL.Path,
+		// GetStep must return milliseconds
+		Step: int64(req.Step) / 1e6,
+		Path: r.URL.Path,
 	}, nil
 }
 
@@ -66,7 +67,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		"start": []string{fmt.Sprintf("%d", lokiReq.StartTs.UnixNano())},
 		"end":   []string{fmt.Sprintf("%d", lokiReq.EndTs.UnixNano())},
 		// waiting for https://github.com/grafana/loki/pull/1211 we should support float or duration.
-		"step":      []string{fmt.Sprintf("%d", lokiReq.Step)},
+		"step":      []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))},
 		"query":     []string{lokiReq.Query},
 		"direction": []string{lokiReq.Direction.String()},
 		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},
