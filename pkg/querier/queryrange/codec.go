@@ -27,17 +27,17 @@ var lokiCodec = &codec{}
 type codec struct{}
 
 func (r *LokiRequest) GetEnd() int64 {
-	return r.EndTs.UnixNano() / 1e6
+	return r.EndTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func (r *LokiRequest) GetStart() int64 {
-	return r.StartTs.UnixNano() / 1e6
+	return r.StartTs.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
 
 func (r *LokiRequest) WithStartEnd(s int64, e int64) queryrange.Request {
 	new := *r
-	r.StartTs = time.Unix(0, s*int64(time.Millisecond))
-	r.EndTs = time.Unix(0, e*int64(time.Millisecond))
+	new.StartTs = time.Unix(0, s*int64(time.Millisecond))
+	new.EndTs = time.Unix(0, e*int64(time.Millisecond))
 	return &new
 }
 
@@ -66,7 +66,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		"start": []string{fmt.Sprintf("%d", lokiReq.StartTs.UnixNano())},
 		"end":   []string{fmt.Sprintf("%d", lokiReq.EndTs.UnixNano())},
 		// waiting for https://github.com/grafana/loki/pull/1211 we should support float or duration.
-		"step":      []string{fmt.Sprintf("%d", lokiReq.Step/int64(time.Second/time.Millisecond))},
+		"step":      []string{fmt.Sprintf("%d", lokiReq.Step)},
 		"query":     []string{lokiReq.Query},
 		"direction": []string{lokiReq.Direction.String()},
 		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},

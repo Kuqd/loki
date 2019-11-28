@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,50 +10,98 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/marshal"
+	"github.com/prometheus/prometheus/pkg/labels"
+	"github.com/prometheus/prometheus/promql"
 	"github.com/stretchr/testify/require"
 	"github.com/weaveworks/common/middleware"
+	"github.com/weaveworks/common/user"
 )
 
-func TestNewTripperware(t *testing.T) {
+var now = time.Now()
 
-	cfg := queryrange.Config{}
+func TestMetricsTripperware(t *testing.T) {
+
+	cfg := queryrange.Config{
+		SplitQueriesByInterval: 4 * time.Hour,
+		AlignQueriesWithStep:   true,
+		MaxRetries:             3,
+	}
 
 	tpw, err := NewTripperware(cfg, util.Logger, fakeLimits{})
 	require.NoError(t, err)
 
-	req, err := http.NewRequest("GET", "/query_range", http.NoBody)
+	lreq := &LokiRequest{
+		Query:     `rate({app="foo"} |= "foo"[1m])`,
+		Limit:     1000,
+		Step:      30,
+		StartTs:   now.Add(-6 * time.Hour),
+		EndTs:     now,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
 	require.NoError(t, err)
 
-	tpw(newfakeRoundTripper(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`responseBody`))
-	}))).RoundTrip(req)
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
 
-	// type args struct {
-	// 	cfg    queryrange.Config
-	// 	log    log.Logger
-	// 	limits queryrange.Limits
-	// }
-	// tests := []struct {
-	// 	name    string
-	// 	args    args
-	// 	want    frontend.Tripperware
-	// 	wantErr bool
-	// }{
-	// 	// TODO: Add test cases.
-	// }
-	// for _, tt := range tests {
-	// 	t.Run(tt.name, func(t *testing.T) {
-	// 		got, err := NewTripperware(tt.args.cfg, tt.args.log, tt.args.limits)
-	// 		if (err != nil) != tt.wantErr {
-	// 			t.Errorf("NewTripperware() error = %v, wantErr %v", err, tt.wantErr)
-	// 			return
-	// 		}
-	// 		got.
-	// 		if !reflect.DeepEqual(got, tt.want) {
-	// 			t.Errorf("NewTripperware() = %v, want %v", got, tt.want)
-	// 		}
-	// 	})
-	// }
+	count, h := counter()
+	_, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 2 split so 6 retries
+	require.Equal(t, 6, *count)
+	require.Error(t, err)
+
+	count, h = promqlResult(promql.Matrix{
+		{
+			Points: []promql.Point{
+				{
+					T: 1568404331324,
+					V: 0.013333333333333334,
+				},
+			},
+			Metric: []labels.Label{
+				{
+					Name:  "filename",
+					Value: `/var/hostlog/apport.log`,
+				},
+				{
+					Name:  "job",
+					Value: "varlogs",
+				},
+			},
+		},
+		{
+			Points: []promql.Point{
+				{
+					T: 1568404331324,
+					V: 3.45,
+				},
+				{
+					T: 1568404331339,
+					V: 4.45,
+				},
+			},
+			Metric: []labels.Label{
+				{
+					Name:  "filename",
+					Value: `/var/hostlog/syslog`,
+				},
+				{
+					Name:  "job",
+					Value: "varlogs",
+				},
+			},
+		},
+	})
+	_, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 2 queries todo test result merge.
+	require.Equal(t, 2, *count)
+	require.NoError(t, err)
 }
 
 type fakeLimits struct{}
@@ -63,6 +112,24 @@ func (fakeLimits) MaxQueryLength(string) time.Duration {
 
 func (fakeLimits) MaxQueryParallelism(string) int {
 	return 14 // Flag default.
+}
+
+func counter() (*int, http.Handler) {
+	count := 0
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+	})
+}
+
+func promqlResult(v promql.Value) (*int, http.Handler) {
+	count := 0
+	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := marshal.WriteQueryResponseJSON(v, w); err != nil {
+			panic(err)
+		}
+		count++
+	})
+
 }
 
 type fakeRoundTripper struct {
