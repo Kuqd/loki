@@ -12,6 +12,7 @@ import (
 	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 
 	"github.com/cortexproject/cortex/pkg/util"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/go-kit/kit/log/level"
 	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
@@ -30,8 +31,11 @@ type QueryResponse struct {
 
 // RangeQueryHandler is a http.HandlerFunc for range queries.
 func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
+	log, ctx := spanlogger.New(r.Context(), "Querier.RangeQueryHandler")
+	defer log.Finish()
+
 	// Enforce the query timeout while querying backends
-	ctx, cancel := context.WithDeadline(r.Context(), time.Now().Add(q.cfg.QueryTimeout))
+	ctx, cancel := context.WithDeadline(ctx, time.Now().Add(q.cfg.QueryTimeout))
 	defer cancel()
 
 	request, err := loghttp.ParseRangeQuery(r)
@@ -39,6 +43,8 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
 		return
 	}
+
+	level.Debug(log).Log("msg", "request parsed", "request", request)
 	query := q.engine.NewRangeQuery(q, request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -46,10 +52,12 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	level.Debug(log).Log("msg", "query executed")
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	level.Debug(log).Log("msg", "query written in json")
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.
