@@ -44,7 +44,6 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	level.Debug(log).Log("msg", "request parsed", "request", request)
 	query := q.engine.NewRangeQuery(q, request.Query, request.Start, request.End, request.Step, request.Direction, request.Limit)
 	result, err := query.Exec(ctx)
 	if err != nil {
@@ -52,12 +51,10 @@ func (q *Querier) RangeQueryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	level.Debug(log).Log("msg", "query executed")
 	if err := marshal.WriteQueryResponseJSON(result, w); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	level.Debug(log).Log("msg", "query written in json")
 }
 
 // InstantQueryHandler is a http.HandlerFunc for instant queries.

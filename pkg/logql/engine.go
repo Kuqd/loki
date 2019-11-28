@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
@@ -144,6 +145,9 @@ func (ng *Engine) NewInstantQuery(
 }
 
 func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
+	log, ctx := spanlogger.New(ctx, "Engine.exec")
+	defer log.Finish()
+
 	ctx, cancel := context.WithTimeout(ctx, ng.timeout)
 	defer cancel()
 
@@ -164,7 +168,7 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 		if err := ng.setupIterators(ctx, e, q); err != nil {
 			return nil, err
 		}
-		return ng.evalSample(e, q), nil
+		return ng.evalSample(ctx, e, q), nil
 
 	case LogSelectorExpr:
 		params := SelectParams{
@@ -193,6 +197,9 @@ func (ng *Engine) exec(ctx context.Context, q *query) (promql.Value, error) {
 
 // setupIterators walk through the AST tree and build iterators required to eval samples.
 func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query) error {
+	log, ctx := spanlogger.New(ctx, "Engine.setupIterators")
+	defer log.Finish()
+
 	if expr == nil {
 		return nil
 	}
@@ -219,7 +226,10 @@ func (ng *Engine) setupIterators(ctx context.Context, expr SampleExpr, q *query)
 }
 
 // evalSample evaluate a sampleExpr
-func (ng *Engine) evalSample(expr SampleExpr, q *query) promql.Value {
+func (ng *Engine) evalSample(ctx context.Context, expr SampleExpr, q *query) promql.Value {
+	log, ctx := spanlogger.New(ctx, "Engine.evalSample")
+	defer log.Finish()
+
 	defer helpers.LogError("closing SampleExpr", expr.Close)
 
 	stepEvaluator := expr.Evaluator()
