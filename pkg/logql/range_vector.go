@@ -2,6 +2,7 @@ package logql
 
 import (
 	"github.com/grafana/loki/pkg/iter"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 )
 
@@ -22,6 +23,7 @@ type rangeVectorIterator struct {
 	iter                         iter.PeekingEntryIterator
 	selRange, step, end, current int64
 	window                       map[string]*promql.Series
+	metrics                      map[string]labels.Labels
 }
 
 func newRangeVectorIterator(
@@ -38,6 +40,7 @@ func newRangeVectorIterator(
 		selRange: selRange,
 		current:  start - step, // first loop iteration will set it to start
 		window:   map[string]*promql.Series{},
+		metrics:  map[string]labels.Labels{},
 	}
 }
 
@@ -95,8 +98,19 @@ func (r *rangeVectorIterator) load(start, end int64) {
 		var ok bool
 		series, ok = r.window[lbs]
 		if !ok {
+			var metric labels.Labels
+			if metric, ok = r.metrics[lbs]; !ok {
+				var err error
+				metric, err = promql.ParseMetric(lbs)
+				if err != nil {
+					continue
+				}
+				r.metrics[lbs] = metric
+			}
+
 			series = &promql.Series{
 				Points: []promql.Point{},
+				Metric: metric,
 			}
 			r.window[lbs] = series
 		}
@@ -112,20 +126,14 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 	result := make([]promql.Sample, 0, len(r.window))
 	// convert ts from nano to milli seconds as the iterator work with nanoseconds
 	ts := r.current / 1e+6
-	for lbs, series := range r.window {
-		labels, err := promql.ParseMetric(lbs)
-		if err != nil {
-			continue
-		}
-
+	for _, series := range r.window {
 		result = append(result, promql.Sample{
 			Point: promql.Point{
 				V: aggregator(ts, series.Points),
 				T: ts,
 			},
-			Metric: labels,
+			Metric: series.Metric,
 		})
-
 	}
 	return ts, result
 }

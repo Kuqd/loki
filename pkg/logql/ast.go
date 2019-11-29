@@ -202,7 +202,7 @@ type SampleExpr interface {
 	// Selector is the LogQL selector to apply when retrieving logs.
 	Selector() LogSelectorExpr
 	// Evaluator returns a `StepEvaluator` that can evaluate the expression step by step
-	Evaluator(context.Context) StepEvaluator
+	Evaluator() StepEvaluator
 	// Close all resources used.
 	Close() error
 }

@@ -232,7 +232,7 @@ func (ng *Engine) evalSample(ctx context.Context, expr SampleExpr, q *query) pro
 
 	defer helpers.LogError("closing SampleExpr", expr.Close)
 
-	stepEvaluator := expr.Evaluator(ctx)
+	stepEvaluator := expr.Evaluator()
 	seriesIndex := map[uint64]*promql.Series{}
 
 	next, ts, vec := stepEvaluator.Next()
@@ -305,12 +305,9 @@ type groupedAggregation struct {
 
 // Evaluator implements `SampleExpr` for a vectorAggregationExpr
 // this is copied and adapted from Prometheus vector aggregation code.
-func (v *vectorAggregationExpr) Evaluator(ctx context.Context) StepEvaluator {
+func (v *vectorAggregationExpr) Evaluator() StepEvaluator {
 	return StepEvaluatorFn(func() (bool, int64, promql.Vector) {
-		log, ctx := spanlogger.New(ctx, "vectorAggregationExpr.Evaluator")
-		defer log.Finish()
-
-		next, ts, vec := v.left.Evaluator(ctx).Next()
+		next, ts, vec := v.left.Evaluator().Next()
 		if !next {
 			return false, 0, promql.Vector{}
 		}
@@ -492,7 +489,7 @@ func (v *vectorAggregationExpr) Evaluator(ctx context.Context) StepEvaluator {
 }
 
 // Evaluator implements `SampleExpr` for a rangeAggregationExpr
-func (e *rangeAggregationExpr) Evaluator(ctx context.Context) StepEvaluator {
+func (e *rangeAggregationExpr) Evaluator() StepEvaluator {
 	var fn RangeVectorAggregator
 	switch e.operation {
 	case OpTypeRate:
@@ -501,8 +498,6 @@ func (e *rangeAggregationExpr) Evaluator(ctx context.Context) StepEvaluator {
 		fn = count
 	}
 	return StepEvaluatorFn(func() (bool, int64, promql.Vector) {
-		log, _ := spanlogger.New(ctx, "rangeAggregationExpr.Evaluator")
-		defer log.Finish()
 
 		next := e.iterator.Next()
 		if !next {
