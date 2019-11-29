@@ -117,8 +117,10 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 
 	cached, ok := s.get(ctx, key)
 	if ok {
+		level.Debug(util.Logger).Log("msg","cache hit","key",key)
 		response, extents, err = s.handleHit(ctx, r, cached)
 	} else {
+		level.Debug(util.Logger).Log("msg","cache miss","key",key)
 		response, extents, err = s.handleMiss(ctx, r)
 	}
 

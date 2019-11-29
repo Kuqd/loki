@@ -115,7 +115,7 @@ github.com/coreos/go-systemd/sdjournal
 # github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f
 github.com/coreos/pkg/capnslog
 github.com/coreos/pkg/dlopen
-# github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953 => github.com/cyriltovena/cortex v0.0.0-20191112201443-a130bd69fad1
+# github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953 => github.com/cyriltovena/cortex v0.0.0-20191129215042-99039706a63c
 github.com/cortexproject/cortex/pkg/chunk
 github.com/cortexproject/cortex/pkg/chunk/aws
 github.com/cortexproject/cortex/pkg/chunk/cache
