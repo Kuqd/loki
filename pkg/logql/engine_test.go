@@ -694,21 +694,26 @@ func TestEngine_NewRangeQuery(t *testing.T) {
 func BenchmarkRangeQuery1000(b *testing.B) {
 	benchmarkRangeQuery(int64(1000), b)
 }
-func BenchmarkRangeQuery10000(b *testing.B) {
-	benchmarkRangeQuery(int64(10000), b)
-}
 func BenchmarkRangeQuery100000(b *testing.B) {
 	benchmarkRangeQuery(int64(100000), b)
 }
+func BenchmarkRangeQuery500000(b *testing.B) {
+	benchmarkRangeQuery(int64(500000), b)
+}
+
+func BenchmarkRangeQuery1000000(b *testing.B) {
+	benchmarkRangeQuery(int64(1000000), b)
+}
+
+var result promql.Value
 
 func benchmarkRangeQuery(testsize int64, b *testing.B) {
 	b.ReportAllocs()
-	b.StopTimer()
 	eng := NewEngine(EngineOpts{})
 	start := time.Unix(0, 0)
 	end := time.Unix(testsize, 0)
 	querier := getLocalQuerier(testsize)
-	b.StartTimer()
+	b.ResetTimer()
 	for _, test := range []struct {
 		qs        string
 		direction logproto.Direction
@@ -735,11 +740,12 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 		{`bottomk(2,rate(({app=~"foo|bar"} |~".+bar")[1m]))`, logproto.FORWARD},
 		{`bottomk(3,rate(({app=~"foo|bar"} |~".+bar")[1m])) without (app)`, logproto.FORWARD},
 	} {
-		q := eng.NewRangeQuery(querier, test.qs, start, end, time.Second, test.direction, 1000)
+		q := eng.NewRangeQuery(querier, test.qs, start, end, 60*time.Second, test.direction, 1000)
 		res, err := q.Exec(context.Background())
 		if err != nil {
 			b.Fatal(err)
 		}
+		result = res
 		if res == nil {
 			b.Fatal("unexpected nil result")
 		}
@@ -749,7 +755,13 @@ func benchmarkRangeQuery(testsize int64, b *testing.B) {
 func getLocalQuerier(size int64) Querier {
 	iters := []iter.EntryIterator{
 		iter.NewStreamIterator(newStream(size, identity, `{app="foo"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="foo",bar="foo"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="foo",bar="bazz"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="foo",bar="fuzz"}`)),
 		iter.NewStreamIterator(newStream(size, identity, `{app="bar"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="foo"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="bazz"}`)),
+		iter.NewStreamIterator(newStream(size, identity, `{app="bar",bar="fuzz"}`)),
 	}
 	return QuerierFunc(func(ctx context.Context, p SelectParams) (iter.EntryIterator, error) {
 		return iter.NewHeapIterator(iters, p.Direction), nil

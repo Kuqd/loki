@@ -1,6 +1,8 @@
 package logql
 
 import (
+	"sync"
+
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -76,7 +78,9 @@ func (r *rangeVectorIterator) popBack(newStart int64) {
 		}
 		r.window[fp].Points = r.window[fp].Points[lastPoint+1:]
 		if len(r.window[fp].Points) == 0 {
+			putPoints(r.window[fp].Points)
 			delete(r.window, fp)
+
 		}
 	}
 }
@@ -109,7 +113,7 @@ func (r *rangeVectorIterator) load(start, end int64) {
 			}
 
 			series = &promql.Series{
-				Points: []promql.Point{},
+				Points: getPoints(),
 				Metric: metric,
 			}
 			r.window[lbs] = series
@@ -136,4 +140,18 @@ func (r *rangeVectorIterator) At(aggregator RangeVectorAggregator) (int64, promq
 		})
 	}
 	return ts, result
+}
+
+var pointsPool sync.Pool
+
+func getPoints() []promql.Point {
+	if r := pointsPool.Get(); r != nil {
+		points := r.([]promql.Point)
+		return points
+	}
+	return make([]promql.Point, 0, 512)
+}
+
+func putPoints(points []promql.Point) {
+	pointsPool.Put(points[:0])
 }
