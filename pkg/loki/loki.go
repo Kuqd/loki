@@ -65,6 +65,7 @@ func (c *Config) RegisterFlags(f *flag.FlagSet) {
 	c.TableManager.RegisterFlags(f)
 	c.Frontend.RegisterFlags(f)
 	c.Worker.RegisterFlags(f)
+	c.QueryRange.RegisterFlags(f)
 }
 
 // Loki is the root datastructure for Loki.

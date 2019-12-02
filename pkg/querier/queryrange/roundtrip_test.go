@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/logproto"
@@ -19,7 +21,7 @@ import (
 	"github.com/weaveworks/common/user"
 )
 
-var now = time.Now()
+var testTime = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
 
 func TestMetricsTripperware(t *testing.T) {
 
@@ -27,6 +29,18 @@ func TestMetricsTripperware(t *testing.T) {
 		SplitQueriesByInterval: 4 * time.Hour,
 		AlignQueriesWithStep:   true,
 		MaxRetries:             3,
+		CacheResults:           true,
+		ResultsCacheConfig: queryrange.ResultsCacheConfig{
+			MaxCacheFreshness: 1 * time.Minute,
+			SplitInterval:     4 * time.Hour,
+			CacheConfig: cache.Config{
+				EnableFifoCache: true,
+				Fifocache: cache.FifoCacheConfig{
+					Size:     1024,
+					Validity: 24 * time.Hour,
+				},
+			},
+		},
 	}
 
 	tpw, err := NewTripperware(cfg, util.Logger, fakeLimits{})
@@ -36,8 +50,8 @@ func TestMetricsTripperware(t *testing.T) {
 		Query:     `rate({app="foo"} |= "foo"[1m])`,
 		Limit:     1000,
 		Step:      30000, //30sec
-		StartTs:   now.Add(-6 * time.Hour),
-		EndTs:     now,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
 		Direction: logproto.FORWARD,
 		Path:      "/query_range",
 	}
@@ -60,7 +74,7 @@ func TestMetricsTripperware(t *testing.T) {
 		{
 			Points: []promql.Point{
 				{
-					T: 1568404331324,
+					T: toMs(testTime.Add(-4 * time.Hour)),
 					V: 0.013333333333333334,
 				},
 			},
@@ -75,33 +89,23 @@ func TestMetricsTripperware(t *testing.T) {
 				},
 			},
 		},
-		{
-			Points: []promql.Point{
-				{
-					T: 1568404331324,
-					V: 3.45,
-				},
-				{
-					T: 1568404331339,
-					V: 4.45,
-				},
-			},
-			Metric: []labels.Label{
-				{
-					Name:  "filename",
-					Value: `/var/hostlog/syslog`,
-				},
-				{
-					Name:  "job",
-					Value: "varlogs",
-				},
-			},
-		},
 	})
-	_, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
-	// 2 queries todo test result merge.
+	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 2 queries
 	require.Equal(t, 2, *count)
 	require.NoError(t, err)
+	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
+
+	count, h = counter()
+	cacheResp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 0 queries result are cached.
+	require.Equal(t, 0, *count)
+	require.NoError(t, err)
+	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+	require.NoError(t, err)
+
+	require.Equal(t, lokiResponse, lokiCacheResponse)
 }
 
 type fakeLimits struct{}
@@ -116,14 +120,20 @@ func (fakeLimits) MaxQueryParallelism(string) int {
 
 func counter() (*int, http.Handler) {
 	count := 0
+	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
 		count++
 	})
 }
 
 func promqlResult(v promql.Value) (*int, http.Handler) {
 	count := 0
+	var lock sync.Mutex
 	return &count, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lock.Lock()
+		defer lock.Unlock()
 		if err := marshal.WriteQueryResponseJSON(v, w); err != nil {
 			panic(err)
 		}
@@ -156,4 +166,8 @@ func (s fakeRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	r.URL.Scheme = "http"
 	r.URL.Host = s.host
 	return http.DefaultTransport.RoundTrip(r)
+}
+
+func toMs(t time.Time) int64 {
+	return t.UnixNano() / (int64(time.Millisecond) / int64(time.Nanosecond))
 }
