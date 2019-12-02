@@ -102,12 +102,9 @@ github.com/coreos/go-systemd v0.0.0-20190321100706-95778dfbb74e/go.mod h1:F5haX7
 github.com/coreos/pkg v0.0.0-20160727233714-3ac0863d7acf/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f h1:lBNOc5arjvs8E5mO2tbpBpLoyyu8B6e44T7hJy6potg=
 github.com/coreos/pkg v0.0.0-20180928190104-399ea9e2e55f/go.mod h1:E3G3o1h8I7cfcXa63jLwjI0eiQQMgzzUDFVpN/nH/eA=
-github.com/cortexproject/cortex v0.3.1-0.20191025190927-77a09cc7c953/go.mod h1:XLeoQLsfseLmVzRpZ6MIuoUOTAC979R7WSdBdnwe800=
 github.com/creack/pty v1.1.7/go.mod h1:lj5s0c3V2DBrqTV7llrYr5NG6My20zk30Fl46Y7DoTY=
-github.com/cyriltovena/cortex v0.0.0-20191112201443-a130bd69fad1 h1:5rPpOjIoR2j6WvAuVG2nm348u/rh9eCdHNG3yPGz0LM=
-github.com/cyriltovena/cortex v0.0.0-20191112201443-a130bd69fad1/go.mod h1:l+lez+2GdiWPHwKdcyONS4cZI5heOwuoV7+NhiZaWLk=
-github.com/cyriltovena/cortex v0.0.0-20191129215042-99039706a63c h1:IHSxi/25WGO8aZY2sVmWjyQbH5i/XOpvwIAdBdqVpGE=
-github.com/cyriltovena/cortex v0.0.0-20191129215042-99039706a63c/go.mod h1:l+lez+2GdiWPHwKdcyONS4cZI5heOwuoV7+NhiZaWLk=
+github.com/cyriltovena/cortex v0.0.0-20191202131808-6d6a948ae571 h1:M6uIrBxlCsepLOHDO+rgOWDFGCcyZKd7no4MpgBbs24=
+github.com/cyriltovena/cortex v0.0.0-20191202131808-6d6a948ae571/go.mod h1:l+lez+2GdiWPHwKdcyONS4cZI5heOwuoV7+NhiZaWLk=
 github.com/cznic/b v0.0.0-20180115125044-35e9bbe41f07/go.mod h1:URriBxXwVq5ijiJ12C7iIZqlA69nTlI+LgI6/pwftG8=
 github.com/cznic/fileutil v0.0.0-20180108211300-6a051e75936f/go.mod h1:8S58EK26zhXSxzv7NQFpnliaOQsmDUxvoQO3rt154Vg=
 github.com/cznic/golex v0.0.0-20170803123110-4ab7c5e190e4/go.mod h1:+bmmJDNmKlhWNG+gwWCkaBoTy39Fs+bzRxVBzoTQbIc=
@@ -603,7 +600,6 @@ github.com/tmc/grpc-websocket-proxy v0.0.0-20190109142713-0ad062ec5ee5/go.mod h1
 github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448 h1:hbyjqt5UnyKeOT3rFVxLxi7iTI6XqR2p4TkwEAQdUiw=
 github.com/tonistiigi/fifo v0.0.0-20190226154929-a9fb20d87448/go.mod h1:Q5IRRDY+cjIaiOjTAnXN5LKQV5MPqVx5ofQn85Jy5Yw=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
-github.com/uber-go/atomic v1.3.2/go.mod h1:/Ct5t2lcmbJ4OSe/waGBoaVvVqtO0bmtfVNex1PFV8g=
 github.com/uber-go/atomic v1.4.0/go.mod h1:/Ct5t2lcmbJ4OSe/waGBoaVvVqtO0bmtfVNex1PFV8g=
 github.com/uber/jaeger-client-go v2.16.0+incompatible h1:Q2Pp6v3QYiocMxomCaJuwQGFt7E53bPYqEgug/AoBtY=
 github.com/uber/jaeger-client-go v2.16.0+incompatible/go.mod h1:WVhlPFC8FDjOFMMWRy2pZqQJSXxYSwNYOkTr/Z6d3Kk=
