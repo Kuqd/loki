@@ -13,6 +13,7 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
@@ -22,28 +23,27 @@ import (
 )
 
 var testTime = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
+var testConfig = queryrange.Config{
+	SplitQueriesByInterval: 4 * time.Hour,
+	AlignQueriesWithStep:   true,
+	MaxRetries:             3,
+	CacheResults:           true,
+	ResultsCacheConfig: queryrange.ResultsCacheConfig{
+		MaxCacheFreshness: 1 * time.Minute,
+		SplitInterval:     4 * time.Hour,
+		CacheConfig: cache.Config{
+			EnableFifoCache: true,
+			Fifocache: cache.FifoCacheConfig{
+				Size:     1024,
+				Validity: 24 * time.Hour,
+			},
+		},
+	},
+}
 
 func TestMetricsTripperware(t *testing.T) {
 
-	cfg := queryrange.Config{
-		SplitQueriesByInterval: 4 * time.Hour,
-		AlignQueriesWithStep:   true,
-		MaxRetries:             3,
-		CacheResults:           true,
-		ResultsCacheConfig: queryrange.ResultsCacheConfig{
-			MaxCacheFreshness: 1 * time.Minute,
-			SplitInterval:     4 * time.Hour,
-			CacheConfig: cache.Config{
-				EnableFifoCache: true,
-				Fifocache: cache.FifoCacheConfig{
-					Size:     1024,
-					Validity: 24 * time.Hour,
-				},
-			},
-		},
-	}
-
-	tpw, err := NewTripperware(cfg, util.Logger, fakeLimits{})
+	tpw, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
 	require.NoError(t, err)
 
 	lreq := &LokiRequest{
@@ -88,6 +88,61 @@ func TestMetricsTripperware(t *testing.T) {
 					Value: "varlogs",
 				},
 			},
+		},
+	})
+	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 2 queries
+	require.Equal(t, 2, *count)
+	require.NoError(t, err)
+	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
+	require.NoError(t, err)
+
+	count, h = counter()
+	cacheResp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// 0 queries result are cached.
+	require.Equal(t, 0, *count)
+	require.NoError(t, err)
+	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
+	require.NoError(t, err)
+
+	require.Equal(t, lokiResponse, lokiCacheResponse)
+}
+
+func TestLogFilterTripperware(t *testing.T) {
+
+	tpw, err := NewTripperware(testConfig, util.Logger, fakeLimits{})
+	require.NoError(t, err)
+
+	lreq := &LokiRequest{
+		Query:     `{app="foo"} |= "foo"`,
+		Limit:     1000,
+		StartTs:   testTime.Add(-6 * time.Hour),
+		EndTs:     testTime,
+		Direction: logproto.FORWARD,
+		Path:      "/query_range",
+	}
+
+	ctx := user.InjectOrgID(context.Background(), "1")
+	req, err := lokiCodec.EncodeRequest(ctx, lreq)
+	require.NoError(t, err)
+
+	req = req.WithContext(ctx)
+	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
+	require.NoError(t, err)
+
+	count, h := counter()
+	// _, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
+	// // 2 split so 6 retries
+	// require.Equal(t, 6, *count)
+	// require.Error(t, err)
+
+	count, h = promqlResult(logql.Streams{
+		{
+			Entries: []logproto.Entry{
+				{Timestamp: testTime.Add(-4 * time.Hour), Line: "foo"},
+				{Timestamp: testTime.Add(-1 * time.Hour), Line: "barr"},
+			},
+			Labels: `{filename="/var/hostlog/apport.log", job="varlogs"}`,
 		},
 	})
 	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)

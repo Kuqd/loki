@@ -64,13 +64,14 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid request format")
 	}
 	params := url.Values{
-		"start": []string{fmt.Sprintf("%d", lokiReq.StartTs.UnixNano())},
-		"end":   []string{fmt.Sprintf("%d", lokiReq.EndTs.UnixNano())},
-		// waiting for https://github.com/grafana/loki/pull/1211 we should support float or duration.
-		"step":      []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))},
+		"start":     []string{fmt.Sprintf("%d", lokiReq.StartTs.UnixNano())},
+		"end":       []string{fmt.Sprintf("%d", lokiReq.EndTs.UnixNano())},
 		"query":     []string{lokiReq.Query},
 		"direction": []string{lokiReq.Direction.String()},
 		"limit":     []string{fmt.Sprintf("%d", lokiReq.Limit)},
+	}
+	if lokiReq.Step != 0 {
+		params["step"] = []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))}
 	}
 	u := &url.URL{
 		Path:     lokiReq.Path,
@@ -221,7 +222,7 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 	for _, res := range responses {
 		lokiResponses = append(lokiResponses, res.(*LokiResponse))
 	}
-
+	// todo limits results
 	if lokiRes.Direction == logproto.FORWARD {
 		sort.Sort(byMinTime(lokiResponses))
 	} else {

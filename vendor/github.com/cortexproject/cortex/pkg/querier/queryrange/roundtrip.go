@@ -176,5 +176,5 @@ func (q roundTripper) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	defer func() { _ = response.Body.Close() }()
 
-	return q.codec.DecodeResponse(ctx, response,r)
+	return q.codec.DecodeResponse(ctx, response, r)
 }

@@ -66,7 +66,7 @@ type resultsCache struct {
 	logger log.Logger
 	cfg    ResultsCacheConfig
 	next   Handler
-	cache  cache.Cache
+	cache  *ExtentCache
 	limits Limits
 
 	extractor Extractor
@@ -84,13 +84,12 @@ func NewResultsCacheMiddleware(logger log.Logger, cfg ResultsCacheConfig, limits
 	if err != nil {
 		return nil, err
 	}
-
 	return MiddlewareFunc(func(next Handler) Handler {
 		return &resultsCache{
 			logger:    logger,
 			cfg:       cfg,
 			next:      next,
-			cache:     c,
+			cache:     NewExtentCache(c, logger),
 			limits:    limits,
 			merger:    merger,
 			extractor: extractor,
@@ -115,7 +114,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		return s.next.Do(ctx, r)
 	}
 
-	cached, ok := s.get(ctx, key)
+	cached, ok := s.cache.Get(ctx, key)
 	if ok {
 		response, extents, err = s.handleHit(ctx, r, cached)
 	} else {
@@ -127,7 +126,7 @@ func (s resultsCache) Do(ctx context.Context, r Request) (Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		s.put(ctx, key, extents)
+		s.cache.Put(ctx, key, extents)
 	}
 
 	return response, err
@@ -139,7 +138,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 		return nil, nil, err
 	}
 
-	extent, err := toExtent(ctx, r, response)
+	extent, err := NewExtent(ctx, r.GetStart(), r.GetEnd(), response)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -152,7 +151,7 @@ func (s resultsCache) handleMiss(ctx context.Context, r Request) (Response, []Ex
 
 func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent) (Response, []Extent, error) {
 	var (
-		reqResps []requestResponse
+		reqResps []RequestResponse
 		err      error
 	)
 	log, ctx := spanlogger.New(ctx, "handleHit")
@@ -168,14 +167,14 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 		return response, nil, err
 	}
 
-	reqResps, err = doRequests(ctx, s.next, requests, s.limits)
+	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
 	if err != nil {
 		return nil, nil, err
 	}
 
 	for _, reqResp := range reqResps {
-		responses = append(responses, reqResp.resp)
-		extent, err := toExtent(ctx, reqResp.req, reqResp.resp)
+		responses = append(responses, reqResp.Response)
+		extent, err := NewExtent(ctx, reqResp.Request.GetStart(), reqResp.Request.GetEnd(), reqResp.Response)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -207,7 +206,7 @@ func (s resultsCache) handleHit(ctx context.Context, r Request, extents []Extent
 
 		accumulator.TraceId = jaegerTraceID(ctx)
 		accumulator.End = extents[i].End
-		currentRes, err := extents[i].toResponse()
+		currentRes, err := extents[i].ToResponse()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -246,26 +245,13 @@ func merge(extents []Extent, acc *accumulator) ([]Extent, error) {
 }
 
 func newAccumulator(base Extent) (*accumulator, error) {
-	res, err := base.toResponse()
+	res, err := base.ToResponse()
 	if err != nil {
 		return nil, err
 	}
 	return &accumulator{
 		Response: res,
 		Extent:   base,
-	}, nil
-}
-
-func toExtent(ctx context.Context, req Request, res Response) (Extent, error) {
-	any, err := types.MarshalAny(res)
-	if err != nil {
-		return Extent{}, err
-	}
-	return Extent{
-		Start:    req.GetStart(),
-		End:      req.GetEnd(),
-		Response: any,
-		TraceId:  jaegerTraceID(ctx),
 	}, nil
 }
 
@@ -286,7 +272,7 @@ func partition(req Request, extents []Extent, extractor Extractor) ([]Request, [
 			r := req.WithStartEnd(start, extent.Start)
 			requests = append(requests, r)
 		}
-		res, err := extent.toResponse()
+		res, err := extent.ToResponse()
 		if err != nil {
 			return nil, nil, err
 		}
@@ -309,7 +295,7 @@ func (s resultsCache) filterRecentExtents(req Request, extents []Extent) ([]Exte
 		// Never cache data for the latest freshness period.
 		if extents[i].End > maxCacheTime {
 			extents[i].End = maxCacheTime
-			res, err := extents[i].toResponse()
+			res, err := extents[i].ToResponse()
 			if err != nil {
 				return nil, err
 			}
@@ -330,8 +316,56 @@ func generateKey(userID string, r Request, interval time.Duration) string {
 	return fmt.Sprintf("%s:%s:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval)
 }
 
-func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
-	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
+// NewExtent creates a new extent from a response.
+func NewExtent(ctx context.Context, start, end int64, res Response) (Extent, error) {
+	any, err := types.MarshalAny(res)
+	if err != nil {
+		return Extent{}, err
+	}
+	return Extent{
+		Start:    start,
+		End:      end,
+		Response: any,
+		TraceId:  jaegerTraceID(ctx),
+	}, nil
+}
+
+// ToResponse unmarshal an extent into a Response.
+func (e *Extent) ToResponse() (Response, error) {
+	msg, err := types.EmptyAny(e.Response)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := types.UnmarshalAny(e.Response, msg); err != nil {
+		return nil, err
+	}
+
+	resp, ok := msg.(Response)
+	if !ok {
+		return nil, fmt.Errorf("bad cached type")
+	}
+	return resp, nil
+}
+
+// ExtentCache is a cache that can store partial result. (extent)
+type ExtentCache struct {
+	cache  cache.Cache
+	logger log.Logger
+}
+
+// NewExtentCache creates a new extent cache.
+func NewExtentCache(cache cache.Cache, logger log.Logger) *ExtentCache {
+	return &ExtentCache{
+		cache:  cache,
+		logger: logger,
+	}
+}
+
+// Get returns all extents for a given cache key and true if the cache was populated.
+// If the cache entry is not found it will return false.
+func (c *ExtentCache) Get(ctx context.Context, key string) ([]Extent, bool) {
+	found, bufs, _ := c.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
@@ -343,7 +377,7 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
 
 	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
-		level.Error(s.logger).Log("msg", "error unmarshalling cached value", "err", err)
+		level.Error(c.logger).Log("msg", "error unmarshalling cached value", "err", err)
 		sp.LogFields(otlog.Error(err))
 		return nil, false
 	}
@@ -362,17 +396,18 @@ func (s resultsCache) get(ctx context.Context, key string) ([]Extent, bool) {
 	return resp.Extents, true
 }
 
-func (s resultsCache) put(ctx context.Context, key string, extents []Extent) {
+// Put saves all extents in the given cache key.
+func (c *ExtentCache) Put(ctx context.Context, key string, extents []Extent) {
 	buf, err := proto.Marshal(&CachedResponse{
 		Key:     key,
 		Extents: extents,
 	})
 	if err != nil {
-		level.Error(s.logger).Log("msg", "error marshalling cached value", "err", err)
+		level.Error(c.logger).Log("msg", "error marshalling cached value", "err", err)
 		return
 	}
 
-	s.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
+	c.cache.Store(ctx, []string{cache.HashKey(key)}, [][]byte{buf})
 }
 
 func jaegerTraceID(ctx context.Context) string {
@@ -414,21 +449,4 @@ func extractSampleStream(start, end int64, stream SampleStream) (SampleStream, b
 		return SampleStream{}, false
 	}
 	return result, true
-}
-
-func (e *Extent) toResponse() (Response, error) {
-	msg, err := types.EmptyAny(e.Response)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := types.UnmarshalAny(e.Response, msg); err != nil {
-		return nil, err
-	}
-
-	resp, ok := msg.(Response)
-	if !ok {
-		return nil, fmt.Errorf("bad cached type")
-	}
-	return resp, nil
 }
