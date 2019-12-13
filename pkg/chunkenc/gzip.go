@@ -55,8 +55,9 @@ type MemChunk struct {
 	// Current in-mem block being appended to.
 	head *headBlock
 
-	encoding Encoding
-	cPool    CompressionPool
+	totalSize int
+	encoding  Encoding
+	cPool     CompressionPool
 }
 
 type block struct {
@@ -163,9 +164,10 @@ func NewMemChunk(enc Encoding) *MemChunk {
 // NewByteChunk returns a MemChunk on the passed bytes.
 func NewByteChunk(b []byte) (*MemChunk, error) {
 	bc := &MemChunk{
-		cPool:    &Gzip,
-		encoding: EncGZIP,
-		head:     &headBlock{}, // Dummy, empty headblock.
+		cPool:     &Gzip,
+		encoding:  EncGZIP,
+		totalSize: len(b),
+		head:      &headBlock{}, // Dummy, empty headblock.
 	}
 
 	db := decbuf{b: b}
@@ -345,6 +347,10 @@ func (c *MemChunk) UncompressedSize() int {
 	}
 
 	return size
+}
+
+func (c *MemChunk) ReceivedSize() int {
+	return c.totalSize
 }
 
 // CompressedSize implements Chunk

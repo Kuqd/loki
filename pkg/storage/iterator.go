@@ -122,6 +122,8 @@ func (it *batchChunkIterator) Next() bool {
 }
 
 func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
+	log, _ := spanlogger.New(it.ctx, "batchChunkIterator.nextBatch")
+	defer log.Finish()
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 
@@ -271,6 +273,9 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 }
 
 func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {
+	log, ctx := spanlogger.New(ctx, "LokiStore.buildIterators")
+	defer log.Finish()
+
 	result := make([]iter.EntryIterator, 0, len(chks))
 	for _, chunks := range chks {
 		iterator, err := buildHeapIterator(ctx, chunks, filter, direction, from, through)
@@ -375,6 +380,11 @@ func fetchLazyChunks(ctx context.Context, chunks []*chunkenc.LazyChunk) error {
 			lastErr = err
 		}
 	}
+	totalsize := int64(0)
+	for _, c := range chunks {
+		totalsize += int64(c.Chunk.Data.(*chunkenc.Facade).LokiChunk().(*chunkenc.MemChunk).ReceivedSize())
+	}
+	level.Debug(log).Log("msg", "lazy chunks load total bytes", "totalsize", totalsize)
 
 	return lastErr
 }
