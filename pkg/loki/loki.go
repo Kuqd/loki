@@ -6,7 +6,6 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
-	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/cortexproject/cortex/pkg/ring"
 	"github.com/cortexproject/cortex/pkg/util"
 
@@ -22,6 +21,8 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/storage"
 	"github.com/grafana/loki/pkg/util/validation"
+	"github.com/grafana/loki/pkg/querier/queryrange"
+
 )
 
 // Config is the root config for Loki.

@@ -314,3 +314,7 @@ func toProto(m loghttp.Matrix) []queryrange.SampleStream {
 	}
 	return res
 }
+
+func (res LokiResponse) isFull() bool {
+	return countEntries(res.Data.Result) >= int64(res.Limit)
+}

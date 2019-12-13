@@ -23,19 +23,22 @@ import (
 )
 
 var testTime = time.Date(2019, 12, 02, 11, 10, 10, 10, time.UTC)
-var testConfig = queryrange.Config{
-	SplitQueriesByInterval: 4 * time.Hour,
-	AlignQueriesWithStep:   true,
-	MaxRetries:             3,
-	CacheResults:           true,
-	ResultsCacheConfig: queryrange.ResultsCacheConfig{
-		MaxCacheFreshness: 1 * time.Minute,
-		SplitInterval:     4 * time.Hour,
-		CacheConfig: cache.Config{
-			EnableFifoCache: true,
-			Fifocache: cache.FifoCacheConfig{
-				Size:     1024,
-				Validity: 24 * time.Hour,
+var testConfig = Config{
+	IntervalBatchSize: 32,
+	Config: queryrange.Config{
+		SplitQueriesByInterval: 4 * time.Hour,
+		AlignQueriesWithStep:   true,
+		MaxRetries:             3,
+		CacheResults:           true,
+		ResultsCacheConfig: queryrange.ResultsCacheConfig{
+			MaxCacheFreshness: 1 * time.Minute,
+			SplitInterval:     4 * time.Hour,
+			CacheConfig: cache.Config{
+				EnableFifoCache: true,
+				Fifocache: cache.FifoCacheConfig{
+					Size:     1024,
+					Validity: 24 * time.Hour,
+				},
 			},
 		},
 	},
@@ -130,13 +133,7 @@ func TestLogFilterTripperware(t *testing.T) {
 	err = user.InjectOrgIDIntoHTTPRequest(ctx, req)
 	require.NoError(t, err)
 
-	count, h := counter()
-	// _, err = tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
-	// // 2 split so 6 retries
-	// require.Equal(t, 6, *count)
-	// require.Error(t, err)
-
-	count, h = promqlResult(logql.Streams{
+	count, h := promqlResult(logql.Streams{
 		{
 			Entries: []logproto.Entry{
 				{Timestamp: testTime.Add(-4 * time.Hour), Line: "foo"},
@@ -147,20 +144,12 @@ func TestLogFilterTripperware(t *testing.T) {
 	})
 	resp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
 	// 2 queries
-	require.Equal(t, 2, *count)
+	require.Equal(t, 64, *count)
 	require.NoError(t, err)
 	lokiResponse, err := lokiCodec.DecodeResponse(ctx, resp, lreq)
 	require.NoError(t, err)
+	t.Log(lokiResponse)
 
-	count, h = counter()
-	cacheResp, err := tpw(newfakeRoundTripper(t, h)).RoundTrip(req)
-	// 0 queries result are cached.
-	require.Equal(t, 0, *count)
-	require.NoError(t, err)
-	lokiCacheResponse, err := lokiCodec.DecodeResponse(ctx, cacheResp, lreq)
-	require.NoError(t, err)
-
-	require.Equal(t, lokiResponse, lokiCacheResponse)
 }
 
 type fakeLimits struct{}

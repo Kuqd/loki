@@ -8,50 +8,63 @@ import (
 )
 
 // SplitByIntervalMiddleware creates a new Middleware that splits log requests by a given interval.
-func SplitByIntervalMiddleware(interval time.Duration, limits queryrange.Limits, merger queryrange.Merger) queryrange.Middleware {
+func SplitByIntervalMiddleware(interval time.Duration, batchSize int, limits queryrange.Limits, merger queryrange.Merger) queryrange.Middleware {
 	return queryrange.MiddlewareFunc(func(next queryrange.Handler) queryrange.Handler {
 		return splitByInterval{
-			next:     next,
-			limits:   limits,
-			merger:   merger,
-			interval: interval,
+			next:      next,
+			limits:    limits,
+			merger:    merger,
+			interval:  interval,
+			batchSize: batchSize,
 		}
 	})
 }
 
-const batchSize = 32
-
 type splitByInterval struct {
-	next     queryrange.Handler
-	limits   queryrange.Limits
-	merger   queryrange.Merger
-	interval time.Duration
+	next      queryrange.Handler
+	limits    queryrange.Limits
+	merger    queryrange.Merger
+	interval  time.Duration
+	batchSize int
 }
 
 func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
 	lokiRequest := r.(*LokiRequest)
 	intervals := splitByTime(lokiRequest, s.interval)
+	var result *LokiResponse
 
 	for _, interval := range intervals {
 		linterval := interval.(*LokiRequest)
-		reqs := splitByTime(linterval, linterval.EndTs.Sub(linterval.StartTs)/batchSize)
+		reqs := splitByTime(linterval, linterval.EndTs.Sub(linterval.StartTs)/time.Duration(s.batchSize))
 
 		reqResps, err := queryrange.DoRequests(ctx, s.next, reqs, s.limits)
 		if err != nil {
 			return nil, err
 		}
+
 		resps := make([]queryrange.Response, 0, len(reqResps))
+		if result != nil {
+			resps = append(resps, result)
+		}
 		for _, reqResp := range reqResps {
 			resps = append(resps, reqResp.Response)
 		}
-		// todo count entry if enough stop otherwise keep going.
-		_, err = s.merger.MergeResponse(resps...)
+
+		resp, err := s.merger.MergeResponse(resps...)
 		if err != nil {
 			return nil, err
 		}
+
+		lokiRes := resp.(*LokiResponse)
+		if lokiRes.isFull() {
+			return resp, nil
+		}
+		if result == nil {
+			result = lokiRes
+		}
 	}
 
-	return nil, nil
+	return result, nil
 }
 
 func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {

@@ -1,6 +1,7 @@
 package queryrange
 
 import (
+	"flag"
 	"net/http"
 	"strings"
 
@@ -12,9 +13,20 @@ import (
 
 const statusSuccess = "success"
 
+type Config struct {
+	queryrange.Config `yaml:",inline"`
+	IntervalBatchSize int `yaml:"interval_batch_size"`
+}
+
+// RegisterFlags adds the flags required to configure this flag set.
+func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
+	cfg.Config.RegisterFlags(f)
+	f.IntVar(&cfg.IntervalBatchSize, "interval-batch-size", 16, "The number of batched requests per interval. (only applied to regex)")
+}
+
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
-func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, error) {
-	metricsTripperware, err := queryrange.NewTripperware(cfg, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
+func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, error) {
+	metricsTripperware, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +38,7 @@ func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Lim
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		return frontend.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if !strings.HasSuffix(req.URL.Path, "/query_range") {
+			if !strings.HasSuffix(req.URL.Path, "/query_range") || !strings.HasSuffix(req.URL.Path, "/api/prom/query") {
 				return next.RoundTrip(req)
 			}
 			params := req.URL.Query()
@@ -54,14 +66,14 @@ func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Lim
 
 // NewLogFilterTripperware creates a new frontend tripperware responsible for handling log requests with regex.
 func NewLogFilterTripperware(
-	cfg queryrange.Config,
+	cfg Config,
 	log log.Logger,
 	limits queryrange.Limits,
 	codec queryrange.Codec,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
+		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, cfg.IntervalBatchSize, limits, codec))
 	}
 	// if cfg.CacheResults {
 	// 	queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
