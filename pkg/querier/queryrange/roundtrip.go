@@ -18,7 +18,7 @@ func NewTripperware(cfg queryrange.Config, log log.Logger, limits queryrange.Lim
 	if err != nil {
 		return nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, LogResponseExtractor)
+	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec)
 	if err != nil {
 		return nil, err
 	}
@@ -58,19 +58,18 @@ func NewLogFilterTripperware(
 	log log.Logger,
 	limits queryrange.Limits,
 	codec queryrange.Codec,
-	cacheExtractor queryrange.Extractor,
 ) (frontend.Tripperware, error) {
 	queryRangeMiddleware := []queryrange.Middleware{queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval"), SplitByIntervalMiddleware(cfg.SplitQueriesByInterval, limits, codec))
 	}
-	if cfg.CacheResults {
-		queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
-		if err != nil {
-			return nil, err
-		}
-		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("results_cache"), queryCacheMiddleware)
-	}
+	// if cfg.CacheResults {
+	// 	queryCacheMiddleware, err := NewResultsCacheMiddleware(log, cfg.ResultsCacheConfig, limits)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("results_cache"), queryCacheMiddleware)
+	// }
 	if cfg.MaxRetries > 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry"), queryrange.NewRetryMiddleware(log, cfg.MaxRetries))
 	}

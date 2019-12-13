@@ -12,7 +12,7 @@ func Test_splitQuery(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		req      queryrange.Request
+		req      *LokiRequest
 		interval time.Duration
 		want     []queryrange.Request
 	}{
@@ -65,7 +65,7 @@ func Test_splitQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, splitQuery(tt.req, tt.interval))
+			require.Equal(t, tt.want, splitByTime(tt.req, tt.interval))
 		})
 	}
 }

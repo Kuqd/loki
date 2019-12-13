@@ -19,6 +19,8 @@ func SplitByIntervalMiddleware(interval time.Duration, limits queryrange.Limits,
 	})
 }
 
+const batchSize = 32
+
 type splitByInterval struct {
 	next     queryrange.Handler
 	limits   queryrange.Limits
@@ -27,39 +29,45 @@ type splitByInterval struct {
 }
 
 func (s splitByInterval) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	reqs := splitQuery(r, s.interval)
+	lokiRequest := r.(*LokiRequest)
+	intervals := splitByTime(lokiRequest, s.interval)
 
-	reqResps, err := queryrange.DoRequests(ctx, s.next, reqs, s.limits)
-	if err != nil {
-		return nil, err
+	for _, interval := range intervals {
+		linterval := interval.(*LokiRequest)
+		reqs := splitByTime(linterval, linterval.EndTs.Sub(linterval.StartTs)/batchSize)
+
+		reqResps, err := queryrange.DoRequests(ctx, s.next, reqs, s.limits)
+		if err != nil {
+			return nil, err
+		}
+		resps := make([]queryrange.Response, 0, len(reqResps))
+		for _, reqResp := range reqResps {
+			resps = append(resps, reqResp.Response)
+		}
+		// todo count entry if enough stop otherwise keep going.
+		_, err = s.merger.MergeResponse(resps...)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	resps := make([]queryrange.Response, 0, len(reqResps))
-	for _, reqResp := range reqResps {
-		resps = append(resps, reqResp.Response)
-	}
-
-	response, err := s.merger.MergeResponse(resps...)
-	if err != nil {
-		return nil, err
-	}
-	return response, nil
+	return nil, nil
 }
 
-func splitQuery(r queryrange.Request, interval time.Duration) []queryrange.Request {
-	lokiRequest := r.(*LokiRequest)
+func splitByTime(r *LokiRequest, interval time.Duration) []queryrange.Request {
+
 	var reqs []queryrange.Request
-	for start := lokiRequest.StartTs; start.Before(lokiRequest.EndTs); start = start.Add(interval) {
+	for start := r.StartTs; start.Before(r.EndTs); start = start.Add(interval) {
 		end := start.Add(interval)
-		if end.After(lokiRequest.EndTs) {
-			end = lokiRequest.EndTs
+		if end.After(r.EndTs) {
+			end = r.EndTs
 		}
 		reqs = append(reqs, &LokiRequest{
-			Query:     lokiRequest.Query,
-			Limit:     lokiRequest.Limit,
-			Step:      lokiRequest.Step,
-			Direction: lokiRequest.Direction,
-			Path:      lokiRequest.Path,
+			Query:     r.Query,
+			Limit:     r.Limit,
+			Step:      r.Step,
+			Direction: r.Direction,
+			Path:      r.Path,
 			StartTs:   start,
 			EndTs:     end,
 		})
