@@ -7,7 +7,9 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/logql"
 )
 
@@ -26,6 +28,8 @@ func (cfg *Config) RegisterFlags(f *flag.FlagSet) {
 
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (frontend.Tripperware, error) {
+	level.Debug(util.Logger).Log("config", cfg)
+
 	metricsTripperware, err := queryrange.NewTripperware(cfg.Config, log, limits, lokiCodec, queryrange.PrometheusResponseExtractor)
 	if err != nil {
 		return nil, err
@@ -38,7 +42,9 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		return frontend.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if !strings.HasSuffix(req.URL.Path, "/query_range") || !strings.HasSuffix(req.URL.Path, "/api/prom/query") {
+			level.Debug(util.Logger).Log("path", req.URL.Path)
+			if !strings.HasSuffix(req.URL.Path, "/query_range") && !strings.HasSuffix(req.URL.Path, "/prom/query") {
+				level.Debug(util.Logger).Log("msg", "normal")
 				return next.RoundTrip(req)
 			}
 			params := req.URL.Query()
@@ -48,14 +54,18 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 				return nil, err
 			}
 			if _, ok := expr.(logql.SampleExpr); ok {
+				level.Debug(util.Logger).Log("msg", "metrics")
 				return metricRT.RoundTrip(req)
 			}
 			if logSelector, ok := expr.(logql.LogSelectorExpr); ok {
+				level.Debug(util.Logger).Log("msg", "log")
+
 				filter, err := logSelector.Filter()
 				if err != nil {
 					return nil, err
 				}
 				if filter != nil {
+					level.Debug(util.Logger).Log("msg", "filter")
 					return logFilterRT.RoundTrip(req)
 				}
 			}
