@@ -122,7 +122,7 @@ func TestLogFilterTripperware(t *testing.T) {
 		StartTs:   testTime.Add(-6 * time.Hour),
 		EndTs:     testTime,
 		Direction: logproto.FORWARD,
-		Path:      "/query_range",
+		Path:      "/loki/api/v1/query_range",
 	}
 
 	ctx := user.InjectOrgID(context.Background(), "1")

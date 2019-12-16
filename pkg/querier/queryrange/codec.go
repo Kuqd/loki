@@ -15,7 +15,9 @@ import (
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
+	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 	json "github.com/json-iterator/go"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
@@ -74,7 +76,8 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		params["step"] = []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))}
 	}
 	u := &url.URL{
-		Path:     "/loki/api/v1/query_range", // the request could come /api/prom/query but we want to only use the new api.
+		// the request could come /api/prom/query but we want to only use the new api.
+		Path:     "/loki/api/v1/query_range",
 		RawQuery: params.Encode(),
 	}
 	req := &http.Request{
@@ -126,6 +129,7 @@ func (codec) DecodeResponse(ctx context.Context, r *http.Response, req queryrang
 			Status:    loghttp.QueryStatusSuccess,
 			Direction: req.(*LokiRequest).Direction,
 			Limit:     req.(*LokiRequest).Limit,
+			Version:   uint32(loghttp.GetVersion(req.(*LokiRequest).Path)),
 			Data: LokiData{
 				ResultType: loghttp.ResultTypeStream,
 				Result:     resp.Data.Result.(loghttp.Streams).ToProto(),
@@ -149,36 +153,29 @@ func (codec) EncodeResponse(ctx context.Context, res queryrange.Response) (*http
 		return nil, httpgrpc.Errorf(http.StatusInternalServerError, "invalid response format")
 	}
 
-	streams := make(loghttp.Streams, len(proto.Data.Result))
+	streams := make([]*logproto.Stream, len(proto.Data.Result))
 
 	for i, stream := range proto.Data.Result {
-		s, err := marshal.NewStream(&stream)
-		if err != nil {
+		streams[i] = &stream
+	}
+	var buf bytes.Buffer
+	if loghttp.Version(proto.Version) == loghttp.VersionLegacy {
+		if err := marshal_legacy.WriteQueryResponseJSON(logql.Streams(streams), &buf); err != nil {
 			return nil, err
 		}
-		streams[i] = s
+	} else {
+		if err := marshal.WriteQueryResponseJSON(logql.Streams(streams), &buf); err != nil {
+			return nil, err
+		}
 	}
 
-	queryRes := loghttp.QueryResponse{
-		Status: proto.Status,
-		Data: loghttp.QueryResponseData{
-			ResultType: loghttp.ResultType(proto.Data.ResultType),
-			Result:     streams,
-		},
-	}
-
-	b, err := json.Marshal(queryRes)
-	if err != nil {
-		return nil, err
-	}
-
-	sp.LogFields(otlog.Int("bytes", len(b)))
+	sp.LogFields(otlog.Int("bytes", buf.Len()))
 
 	resp := http.Response{
 		Header: http.Header{
 			"Content-Type": []string{"application/json"},
 		},
-		Body:       ioutil.NopCloser(bytes.NewBuffer(b)),
+		Body:       ioutil.NopCloser(&buf),
 		StatusCode: http.StatusOK,
 	}
 	return &resp, nil
@@ -205,6 +202,9 @@ func (codec) MergeResponse(responses ...queryrange.Response) (queryrange.Respons
 		Status:    loghttp.QueryStatusSuccess,
 		Direction: lokiRes.Direction,
 		Limit:     lokiRes.Limit,
+		Version:   lokiRes.Version,
+		ErrorType: lokiRes.ErrorType,
+		Error:     lokiRes.Error,
 		Data: LokiData{
 			ResultType: loghttp.ResultTypeStream,
 			Result:     mergeStreams(lokiResponses, lokiRes.Limit, lokiRes.Direction),

@@ -26,6 +26,7 @@ message LokiResponse {
   string Error = 4 [(gogoproto.jsontag) = "error,omitempty"];
   logproto.Direction direction = 5;
   uint32 limit = 6;
+  uint32 version = 7;
 }
 
 message LokiData {
