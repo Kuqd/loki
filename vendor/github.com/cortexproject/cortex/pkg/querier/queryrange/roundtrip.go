@@ -140,7 +140,7 @@ func NewRoundTripper(next http.RoundTripper, codec Codec, middlewares ...Middlew
 }
 
 func (q roundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	if !strings.HasSuffix(r.URL.Path, "/query_range") && !strings.HasSuffix(r.URL.Path, "/prom/query") {
+	if !strings.HasSuffix(r.URL.Path, "/query_range") {
 		return q.next.RoundTrip(r)
 	}
 
