@@ -42,9 +42,7 @@ func NewTripperware(cfg Config, log log.Logger, limits queryrange.Limits) (front
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
 		return frontend.RoundTripFunc(func(req *http.Request) (*http.Response, error) {
-			level.Debug(util.Logger).Log("path", req.URL.Path)
 			if !strings.HasSuffix(req.URL.Path, "/query_range") && !strings.HasSuffix(req.URL.Path, "/prom/query") {
-				level.Debug(util.Logger).Log("msg", "normal")
 				return next.RoundTrip(req)
 			}
 			params := req.URL.Query()

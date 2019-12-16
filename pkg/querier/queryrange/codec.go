@@ -74,7 +74,7 @@ func (codec) EncodeRequest(ctx context.Context, r queryrange.Request) (*http.Req
 		params["step"] = []string{fmt.Sprintf("%d", lokiReq.Step/int64(1e3))}
 	}
 	u := &url.URL{
-		Path:     lokiReq.Path,
+		Path:     "/loki/api/v1/query_range", // the request could come /api/prom/query but we want to only use the new api.
 		RawQuery: params.Encode(),
 	}
 	req := &http.Request{
