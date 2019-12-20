@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/opentracing/opentracing-go"
 	"github.com/prometheus/common/model"
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -69,10 +70,12 @@ type batchChunkIterator struct {
 	curr            iter.EntryIterator
 	lastOverlapping []*chunkenc.LazyChunk
 
-	ctx      context.Context
-	matchers []*labels.Matcher
-	filter   logql.Filter
-	req      *logproto.QueryRequest
+	ctx         context.Context
+	matchers    []*labels.Matcher
+	filter      logql.Filter
+	req         *logproto.QueryRequest
+	logger      *spanlogger.SpanLogger
+	currentSpan opentracing.Span
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
@@ -86,6 +89,7 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 			break
 		}
 	}
+	logger, ctx := spanlogger.New(ctx, "BatchChunkIterator")
 
 	res := &batchChunkIterator{
 		batchSize: batchSize,
@@ -94,6 +98,7 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 		req:       req,
 		ctx:       ctx,
 		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
+		logger:    logger,
 	}
 	sort.Sort(res.chunks)
 	return res
@@ -105,6 +110,9 @@ func (it *batchChunkIterator) Next() bool {
 	for {
 		if it.curr != nil && it.curr.Next() {
 			return true
+		}
+		if it.currentSpan != nil {
+			it.currentSpan.Finish()
 		}
 		if it.chunks.Len() == 0 {
 			return false
@@ -122,6 +130,8 @@ func (it *batchChunkIterator) Next() bool {
 }
 
 func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
+	span, ctx := opentracing.StartSpanFromContext(it.ctx, "BatchChunkIterator.nextBatch")
+	it.currentSpan = span
 	// the first chunk of the batch
 	headChunk := it.chunks.Peek()
 
@@ -208,7 +218,7 @@ func (it *batchChunkIterator) nextBatch() (iter.EntryIterator, error) {
 	}
 
 	// create the new chunks iterator from the current batch.
-	return newChunksIterator(it.ctx, batch, it.matchers, it.filter, it.req.Direction, from, through)
+	return newChunksIterator(ctx, batch, it.matchers, it.filter, it.req.Direction, from, through)
 }
 
 func (it *batchChunkIterator) Entry() logproto.Entry {
@@ -230,6 +240,7 @@ func (it *batchChunkIterator) Error() error {
 }
 
 func (it *batchChunkIterator) Close() error {
+	defer it.logger.Finish()
 	if it.curr != nil {
 		return it.curr.Close()
 	}
@@ -267,7 +278,7 @@ func newChunksIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, matche
 		return nil, err
 	}
 
-	return iter.NewHeapIterator(iters, direction), nil
+	return iter.InstrumentWithNext(ctx, "ChunksIterator", iter.NewHeapIterator(iters, direction), false), nil
 }
 
 func buildIterators(ctx context.Context, chks map[model.Fingerprint][][]*chunkenc.LazyChunk, filter logql.Filter, direction logproto.Direction, from, through time.Time) ([]iter.EntryIterator, error) {

@@ -2,10 +2,13 @@ package iter
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
 	"io"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 )
@@ -704,4 +707,48 @@ func (it *peekingEntryIterator) Error() error {
 // Close implements `EntryIterator`
 func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
+}
+
+type instrumentedIterator struct {
+	EntryIterator
+	name        string
+	elapsedNext time.Duration
+	logger      *spanlogger.SpanLogger
+	nextSpan    bool
+	ctx         context.Context
+}
+
+func Instrument(ctx context.Context, name string, iter EntryIterator) EntryIterator {
+	return InstrumentWithNext(ctx, name, iter, false)
+}
+
+func InstrumentWithNext(ctx context.Context, name string, iter EntryIterator, next bool) EntryIterator {
+	it := &instrumentedIterator{
+		EntryIterator: iter,
+		name:          name,
+		nextSpan:      next,
+		ctx:           ctx,
+	}
+	it.logger, it.ctx = spanlogger.New(ctx, name)
+	return it
+}
+
+// Next implements `EntryIterator`
+func (it *instrumentedIterator) Next() bool {
+	if it.nextSpan {
+		logger, _ := spanlogger.New(it.ctx, it.name+".Next")
+		defer logger.Finish()
+	}
+	start := time.Now()
+	defer func() {
+		it.elapsedNext += time.Since(start)
+	}()
+	return it.EntryIterator.Next()
+}
+
+// Close implements `EntryIterator`
+func (it *instrumentedIterator) Close() error {
+	level.Debug(it.logger).Log("Time spent in next (ms)", it.elapsedNext.Nanoseconds()/int64(time.Millisecond))
+	it.logger.Finish()
+	return it.EntryIterator.Close()
 }
