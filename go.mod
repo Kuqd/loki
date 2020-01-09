@@ -50,6 +50,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20191103151037-0e7cefadc44f
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	go.opencensus.io v0.22.1 // indirect
+	go.uber.org/automaxprocs v1.2.0
 	golang.org/x/net v0.0.0-20190923162816-aa69164e4478
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect

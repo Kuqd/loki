@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"runtime"
 
 	"github.com/go-kit/kit/log/level"
 	_ "github.com/grafana/loki/pkg/build"
@@ -14,6 +15,7 @@ import (
 	"github.com/prometheus/common/version"
 	"github.com/weaveworks/common/logging"
 	"github.com/weaveworks/common/tracing"
+	_ "go.uber.org/automaxprocs"
 
 	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/grafana/loki/pkg/util/validation"
@@ -21,6 +23,8 @@ import (
 
 func init() {
 	prometheus.MustRegister(version.NewCollector("loki"))
+	runtime.SetBlockProfileRate(1)
+	runtime.SetMutexProfileFraction(1)
 }
 
 func main() {

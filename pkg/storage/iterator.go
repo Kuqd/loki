@@ -74,6 +74,12 @@ type batchChunkIterator struct {
 	matchers []*labels.Matcher
 	filter   logql.Filter
 	req      *logproto.QueryRequest
+
+	next chan *struct {
+		iter iter.EntryIterator
+		err  error
+	}
+	cancel context.CancelFunc
 }
 
 // newBatchChunkIterator creates a new batch iterator with the given batchSize.
@@ -87,16 +93,40 @@ func newBatchChunkIterator(ctx context.Context, chunks []*chunkenc.LazyChunk, ba
 			break
 		}
 	}
-
+	ctx, cancel := context.WithCancel(ctx)
 	res := &batchChunkIterator{
 		batchSize: batchSize,
 		matchers:  matchers,
 		filter:    filter,
 		req:       req,
 		ctx:       ctx,
+		cancel:    cancel,
 		chunks:    lazyChunks{direction: req.Direction, chunks: chunks},
+		next: make(chan *struct {
+			iter iter.EntryIterator
+			err  error
+		}, 1),
 	}
 	sort.Sort(res.chunks)
+	go func() {
+		for {
+			if res.chunks.Len() == 0 {
+				close(res.next)
+				return
+			}
+			next, err := res.nextBatch()
+			select {
+			case <-ctx.Done():
+				close(res.next)
+				return
+			case res.next <- &struct {
+				iter iter.EntryIterator
+				err  error
+			}{next, err}:
+
+			}
+		}
+	}()
 	return res
 }
 
@@ -107,15 +137,16 @@ func (it *batchChunkIterator) Next() bool {
 		if it.curr != nil && it.curr.Next() {
 			return true
 		}
-		if it.chunks.Len() == 0 {
-			return false
-		}
 		// close previous iterator
 		if it.curr != nil {
 			it.err = it.curr.Close()
 		}
-		it.curr, err = it.nextBatch()
-		if err != nil {
+		next := <-it.next
+		if next == nil {
+			return false
+		}
+		it.curr = next.iter
+		if next.err != nil {
 			it.err = err
 			return false
 		}
@@ -231,6 +262,7 @@ func (it *batchChunkIterator) Error() error {
 }
 
 func (it *batchChunkIterator) Close() error {
+	it.cancel()
 	if it.curr != nil {
 		return it.curr.Close()
 	}
