@@ -16,6 +16,8 @@ type Stats struct {
 	BytesDecompressed int64         // Total bytes decompressed data size
 	BytesCompressed   int64         // Total bytes compressed read
 	FetchedChunks     int64         // Total number of chunks fetched.
+	TotalDuplicates   int64         // Total number of line duplicates from replication.
+	TimeFetching      time.Duration // Time spent fetching chunks.
 }
 
 // NewContext creates a new decompression context

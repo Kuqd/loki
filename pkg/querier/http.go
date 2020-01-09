@@ -6,14 +6,10 @@ import (
 	"time"
 
 	"github.com/grafana/loki/pkg/loghttp"
-	loghttp_legacy "github.com/grafana/loki/pkg/loghttp/legacy"
 	"github.com/grafana/loki/pkg/logql"
 	"github.com/grafana/loki/pkg/logql/marshal"
 	marshal_legacy "github.com/grafana/loki/pkg/logql/marshal/legacy"
 
-	"github.com/cortexproject/cortex/pkg/util"
-	"github.com/go-kit/kit/log/level"
-	"github.com/gorilla/websocket"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/promql"
 	"github.com/weaveworks/common/httpgrpc"
@@ -134,88 +130,90 @@ func (q *Querier) LabelHandler(w http.ResponseWriter, r *http.Request) {
 
 // TailHandler is a http.HandlerFunc for handling tail queries.
 func (q *Querier) TailHandler(w http.ResponseWriter, r *http.Request) {
-	upgrader := websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
+	http.Error(w, "sorry no tailing at the moment", http.StatusNotAcceptable)
+	return
+	// upgrader := websocket.Upgrader{
+	// 	CheckOrigin: func(r *http.Request) bool { return true },
+	// }
 
-	req, err := loghttp.ParseTailQuery(r)
-	if err != nil {
-		http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
-		return
-	}
+	// req, err := loghttp.ParseTailQuery(r)
+	// if err != nil {
+	// 	http.Error(w, httpgrpc.Errorf(http.StatusBadRequest, err.Error()).Error(), http.StatusBadRequest)
+	// 	return
+	// }
 
-	req.Query, err = parseRegexQuery(r)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
+	// req.Query, err = parseRegexQuery(r)
+	// if err != nil {
+	// 	http.Error(w, err.Error(), http.StatusBadRequest)
+	// 	return
+	// }
 
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		level.Error(util.Logger).Log("msg", "Error in upgrading websocket", "err", err)
-		return
-	}
+	// conn, err := upgrader.Upgrade(w, r, nil)
+	// if err != nil {
+	// 	level.Error(util.Logger).Log("msg", "Error in upgrading websocket", "err", err)
+	// 	return
+	// }
 
-	defer func() {
-		if err := conn.Close(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error closing websocket", "err", err)
-		}
-	}()
+	// defer func() {
+	// 	if err := conn.Close(); err != nil {
+	// 		level.Error(util.Logger).Log("msg", "Error closing websocket", "err", err)
+	// 	}
+	// }()
 
-	tailer, err := q.Tail(r.Context(), req)
-	if err != nil {
-		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-			level.Error(util.Logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
-		}
-		return
-	}
-	defer func() {
-		if err := tailer.close(); err != nil {
-			level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
-		}
-	}()
+	// tailer, err := q.Tail(r.Context(), req)
+	// if err != nil {
+	// 	if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+	// 		level.Error(util.Logger).Log("msg", "Error connecting to ingesters for tailing", "err", err)
+	// 	}
+	// 	return
+	// }
+	// defer func() {
+	// 	if err := tailer.close(); err != nil {
+	// 		level.Error(util.Logger).Log("msg", "Error closing Tailer", "err", err)
+	// 	}
+	// }()
 
-	ticker := time.NewTicker(wsPingPeriod)
-	defer ticker.Stop()
+	// ticker := time.NewTicker(wsPingPeriod)
+	// defer ticker.Stop()
 
-	var response *loghttp_legacy.TailResponse
-	responseChan := tailer.getResponseChan()
-	closeErrChan := tailer.getCloseErrorChan()
+	// var response *loghttp_legacy.TailResponse
+	// responseChan := tailer.getResponseChan()
+	// closeErrChan := tailer.getCloseErrorChan()
 
-	for {
-		select {
-		case response = <-responseChan:
-			var err error
-			if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
-				err = marshal.WriteTailResponseJSON(*response, conn)
-			} else {
-				err = marshal_legacy.WriteTailResponseJSON(*response, conn)
-			}
-			if err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing to websocket", "err", err)
-				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
-				}
-				return
-			}
+	// for {
+	// 	select {
+	// 	case response = <-responseChan:
+	// 		var err error
+	// 		if loghttp.GetVersion(r.RequestURI) == loghttp.VersionV1 {
+	// 			err = marshal.WriteTailResponseJSON(*response, conn)
+	// 		} else {
+	// 			err = marshal_legacy.WriteTailResponseJSON(*response, conn)
+	// 		}
+	// 		if err != nil {
+	// 			level.Error(util.Logger).Log("msg", "Error writing to websocket", "err", err)
+	// 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+	// 				level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+	// 			}
+	// 			return
+	// 		}
 
-		case err := <-closeErrChan:
-			level.Error(util.Logger).Log("msg", "Error from iterator", "err", err)
-			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
-			}
-			return
-		case <-ticker.C:
-			// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
-			if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				level.Error(util.Logger).Log("msg", "Error writing ping message to websocket", "err", err)
-				if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
-					level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
-				}
-				return
-			}
-		}
-	}
+	// 	case err := <-closeErrChan:
+	// 		level.Error(util.Logger).Log("msg", "Error from iterator", "err", err)
+	// 		if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+	// 			level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+	// 		}
+	// 		return
+	// 	case <-ticker.C:
+	// 		// This is to periodically check whether connection is active, useful to clean up dead connections when there are no entries to send
+	// 		if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+	// 			level.Error(util.Logger).Log("msg", "Error writing ping message to websocket", "err", err)
+	// 			if err := conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseInternalServerErr, err.Error())); err != nil {
+	// 				level.Error(util.Logger).Log("msg", "Error writing close message to websocket", "err", err)
+	// 			}
+	// 			return
+	// 		}
+	// 	}
+	// }
 }
 
 // SeriesHandler returns the list of time series that match a certain label set.
