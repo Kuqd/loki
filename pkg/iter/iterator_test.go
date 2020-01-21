@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"io"
 	"sort"
 	"testing"
 	"time"
@@ -191,14 +192,18 @@ func TestHeapIteratorPrefetch(t *testing.T) {
 type generator func(i int64) logproto.Entry
 
 func mkStreamIterator(f generator, labels string) EntryIterator {
+	return NewStreamIterator(mkStream(f, labels))
+}
+
+func mkStream(f generator, labels string) *logproto.Stream {
 	entries := []logproto.Entry{}
 	for i := int64(0); i < testSize; i++ {
 		entries = append(entries, f(i))
 	}
-	return NewStreamIterator(&logproto.Stream{
+	return &logproto.Stream{
 		Entries: entries,
 		Labels:  labels,
-	})
+	}
 }
 
 func identity(i int64) logproto.Entry {
@@ -376,4 +381,100 @@ func Test_PeekingIterator(t *testing.T) {
 	if ok {
 		t.Fatal("should not be ok.")
 	}
+}
+
+func mkQueryResponse(i int64) *logproto.QueryResponse {
+	return &logproto.QueryResponse{
+		Streams: []*logproto.Stream{
+			mkStream(offset(i, identity), `{foobar: "baz1"}`),
+			mkStream(offset(i, identity), `{foobar: "baz2"}`),
+			mkStream(offset(i, identity), `{foobar: "baz3"}`),
+		},
+	}
+}
+
+type inMemoryQueryClient struct {
+	batches []*logproto.QueryResponse
+	current int
+}
+
+func (c *inMemoryQueryClient) Recv() (*logproto.QueryResponse, error) {
+	defer func() { c.current++ }()
+	time.Sleep(time.Millisecond * 10) // faking latency.
+	if c.current >= len(c.batches) {
+		return nil, io.EOF
+	}
+	return c.batches[c.current], nil
+}
+
+func (*inMemoryQueryClient) Context() context.Context {
+	return context.Background()
+}
+
+func (*inMemoryQueryClient) CloseSend() error {
+	return nil
+}
+
+var entries []logproto.Entry
+
+func Benchmark_QueryClientIterator(b *testing.B) {
+	b.ReportAllocs()
+	var tests []EntryIterator
+	for n := 0; n < b.N; n++ {
+		tests = append(tests, newFakeQueryClientIterator(5))
+	}
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iter := tests[n]
+
+		for iter.Next() {
+			entries = append(entries, iter.Entry())
+		}
+		_ = iter.Close()
+	}
+
+}
+
+func Benchmark_QueryClientsIterator(b *testing.B) {
+	b.ReportAllocs()
+	var tests []EntryIterator
+	for n := 0; n < b.N; n++ {
+		tests = append(tests, newFakeQueryClientsIterator(5))
+	}
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		iter := tests[n]
+
+		for iter.Next() {
+			entries = append(entries, iter.Entry())
+		}
+		_ = iter.Close()
+	}
+
+}
+
+func newFakeQueryClientIterator(ingesters int) EntryIterator {
+	iters := make([]EntryIterator, ingesters)
+	for i := 0; i < ingesters; i++ {
+		iters[i] = NewQueryClientIterator(&inMemoryQueryClient{
+			batches: []*logproto.QueryResponse{
+				mkQueryResponse(1),
+				mkQueryResponse(2),
+			},
+		}, logproto.BACKWARD)
+	}
+	return NewHeapIterator(context.Background(), iters, logproto.BACKWARD)
+}
+
+func newFakeQueryClientsIterator(ingesters int) EntryIterator {
+	clients := make([]QueryClient, ingesters)
+	for i := 0; i < ingesters; i++ {
+		clients[i] = &inMemoryQueryClient{
+			batches: []*logproto.QueryResponse{
+				mkQueryResponse(1),
+				mkQueryResponse(2),
+			},
+		}
+	}
+	return NewQueryClientsIterator(context.Background(), 1, logproto.BACKWARD, clients...)
 }

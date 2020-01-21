@@ -355,14 +355,20 @@ func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse,
 }
 
 type queryClientIterator struct {
-	client    logproto.Querier_QueryClient
+	client    QueryClient
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
 }
 
+type QueryClient interface {
+	Recv() (*logproto.QueryResponse, error)
+	Context() context.Context
+	CloseSend() error
+}
+
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(client QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
 		direction: direction,
@@ -399,6 +405,138 @@ func (i *queryClientIterator) Error() error {
 
 func (i *queryClientIterator) Close() error {
 	return i.client.CloseSend()
+}
+
+type queryClientsIterator struct {
+	ctx       context.Context
+	cancel    context.CancelFunc
+	clients   []QueryClient
+	direction logproto.Direction
+	err       error
+	curr      EntryIterator
+	buffer    chan EntryIterator
+}
+
+type batchResponse struct {
+	batch *logproto.QueryResponse
+	err   error
+}
+
+// NewQueryClientsIterator returns an iterator over a multiple QueryClient.
+func NewQueryClientsIterator(ctx context.Context, bufferSize int, direction logproto.Direction, clients ...QueryClient) EntryIterator {
+	ctx, cancel := context.WithCancel(ctx)
+	iter := &queryClientsIterator{
+		ctx:       ctx,
+		clients:   clients,
+		direction: direction,
+		cancel:    cancel,
+		buffer:    make(chan EntryIterator, bufferSize),
+	}
+	go iter.loop()
+	return iter
+}
+
+func (it *queryClientsIterator) nextBatches() EntryIterator {
+	ctx, cancel := context.WithCancel(it.ctx)
+	defer cancel()
+
+	responses := make([]chan batchResponse, len(it.clients))
+	for i, client := range it.clients {
+		responses[i] = make(chan batchResponse)
+		response := responses[i]
+		go func(client QueryClient, response chan batchResponse) {
+			batch, err := client.Recv()
+			select {
+			case <-ctx.Done():
+				close(response)
+				return
+			case response <- batchResponse{batch: batch, err: err}:
+			}
+
+		}(client, response)
+	}
+
+	iters := make([]EntryIterator, 0, len(it.clients))
+
+readResponse:
+	for i, response := range responses {
+		select {
+		case <-ctx.Done():
+			it.err = ctx.Err()
+			break readResponse
+		case res := <-response:
+			if res.err != nil {
+				if res.err == io.EOF {
+					// mark exhausted client.
+					it.clients[i] = nil
+					continue
+				}
+				it.err = res.err
+				continue
+			}
+			if res.batch != nil {
+				iters = append(iters, NewQueryResponseIterator(ctx, res.batch, it.direction))
+			}
+		}
+	}
+
+	newClients := make([]QueryClient, 0, len(it.clients))
+
+	for _, c := range it.clients {
+		// deleting exhausted clients.
+		if c != nil {
+			newClients = append(newClients, c)
+		}
+	}
+	it.clients = newClients
+
+	if len(iters) > 0 {
+		return NewHeapIterator(ctx, iters, it.direction)
+	}
+
+	return nil
+}
+
+func (it *queryClientsIterator) loop() {
+	for {
+		if len(it.clients) == 0 {
+			close(it.buffer)
+			return
+		}
+		it.buffer <- it.nextBatches()
+	}
+}
+
+func (it *queryClientsIterator) Next() bool {
+	for it.curr == nil || !it.curr.Next() {
+		if it.curr != nil {
+			//race
+			it.err = it.Close()
+		}
+		it.curr = <-it.buffer
+		if it.curr == nil {
+			return false
+		}
+	}
+	return true
+}
+
+func (it *queryClientsIterator) Entry() logproto.Entry {
+	return it.curr.Entry()
+}
+
+func (it *queryClientsIterator) Labels() string {
+	return it.curr.Labels()
+}
+
+func (it *queryClientsIterator) Error() error {
+	return it.err
+}
+
+func (it *queryClientsIterator) Close() error {
+	it.cancel()
+	// for all clients remaining close.
+	return it.err
 }
 
 type nonOverlappingIterator struct {
