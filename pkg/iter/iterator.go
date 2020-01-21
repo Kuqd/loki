@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/grafana/loki/pkg/chunkenc/decompression"
@@ -415,6 +416,7 @@ type queryClientsIterator struct {
 	err       error
 	curr      EntryIterator
 	buffer    chan EntryIterator
+	errMtx    sync.RWMutex
 }
 
 type batchResponse struct {
@@ -422,7 +424,7 @@ type batchResponse struct {
 	err   error
 }
 
-// NewQueryClientsIterator returns an iterator over a multiple QueryClient.
+// NewQueryClientsIterator returns an iterator over a multiple QueryClient in parallel.
 func NewQueryClientsIterator(ctx context.Context, bufferSize int, direction logproto.Direction, clients ...QueryClient) EntryIterator {
 	ctx, cancel := context.WithCancel(ctx)
 	iter := &queryClientsIterator{
@@ -462,7 +464,7 @@ readResponse:
 	for i, response := range responses {
 		select {
 		case <-ctx.Done():
-			it.err = ctx.Err()
+			it.setErr(ctx.Err())
 			break readResponse
 		case res := <-response:
 			if res.err != nil {
@@ -471,7 +473,7 @@ readResponse:
 					it.clients[i] = nil
 					continue
 				}
-				it.err = res.err
+				it.setErr(res.err)
 				continue
 			}
 			if res.batch != nil {
@@ -497,7 +499,22 @@ readResponse:
 	return nil
 }
 
+func (it *queryClientsIterator) setErr(err error) {
+	// we don't reset err back to nil
+	if err == nil {
+		return
+	}
+	it.errMtx.Lock()
+	it.err = err
+	it.errMtx.Unlock()
+}
+
 func (it *queryClientsIterator) loop() {
+	defer func() {
+		for _, c := range it.clients {
+			it.setErr(c.CloseSend())
+		}
+	}()
 	for {
 		if len(it.clients) == 0 {
 			close(it.buffer)
@@ -510,8 +527,7 @@ func (it *queryClientsIterator) loop() {
 func (it *queryClientsIterator) Next() bool {
 	for it.curr == nil || !it.curr.Next() {
 		if it.curr != nil {
-			//race
-			it.err = it.Close()
+			it.setErr(it.Close())
 		}
 		it.curr = <-it.buffer
 		if it.curr == nil {
@@ -530,13 +546,17 @@ func (it *queryClientsIterator) Labels() string {
 }
 
 func (it *queryClientsIterator) Error() error {
+	it.errMtx.RLock()
+	defer it.errMtx.RUnlock()
 	return it.err
 }
 
 func (it *queryClientsIterator) Close() error {
 	it.cancel()
-	// for all clients remaining close.
-	return it.err
+	if it.curr != nil {
+		return it.curr.Close()
+	}
+	return it.Error()
 }
 
 type nonOverlappingIterator struct {

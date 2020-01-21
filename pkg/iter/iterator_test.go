@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -396,10 +397,16 @@ func mkQueryResponse(i int64) *logproto.QueryResponse {
 type inMemoryQueryClient struct {
 	batches []*logproto.QueryResponse
 	current int
+	mtx     sync.Mutex // avoid race for multiple reads.
 }
 
 func (c *inMemoryQueryClient) Recv() (*logproto.QueryResponse, error) {
-	defer func() { c.current++ }()
+	c.mtx.Lock()
+	defer func() {
+		c.current++
+		c.mtx.Unlock()
+	}()
+
 	time.Sleep(time.Millisecond * 10) // faking latency.
 	if c.current >= len(c.batches) {
 		return nil, io.EOF
