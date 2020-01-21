@@ -439,9 +439,6 @@ func NewQueryClientsIterator(ctx context.Context, bufferSize int, direction logp
 }
 
 func (it *queryClientsIterator) nextBatches() EntryIterator {
-	ctx, cancel := context.WithCancel(it.ctx)
-	defer cancel()
-
 	responses := make([]chan batchResponse, len(it.clients))
 	for i, client := range it.clients {
 		responses[i] = make(chan batchResponse)
@@ -449,7 +446,7 @@ func (it *queryClientsIterator) nextBatches() EntryIterator {
 		go func(client QueryClient, response chan batchResponse) {
 			batch, err := client.Recv()
 			select {
-			case <-ctx.Done():
+			case <-it.ctx.Done():
 				close(response)
 				return
 			case response <- batchResponse{batch: batch, err: err}:
@@ -463,8 +460,8 @@ func (it *queryClientsIterator) nextBatches() EntryIterator {
 readResponse:
 	for i, response := range responses {
 		select {
-		case <-ctx.Done():
-			it.setErr(ctx.Err())
+		case <-it.ctx.Done():
+			it.setErr(it.ctx.Err())
 			break readResponse
 		case res := <-response:
 			if res.err != nil {
@@ -477,7 +474,7 @@ readResponse:
 				continue
 			}
 			if res.batch != nil {
-				iters = append(iters, NewQueryResponseIterator(ctx, res.batch, it.direction))
+				iters = append(iters, NewQueryResponseIterator(it.ctx, res.batch, it.direction))
 			}
 		}
 	}
@@ -493,7 +490,7 @@ readResponse:
 	it.clients = newClients
 
 	if len(iters) > 0 {
-		return NewHeapIterator(ctx, iters, it.direction)
+		return NewHeapIterator(it.ctx, iters, it.direction)
 	}
 
 	return nil
@@ -511,13 +508,20 @@ func (it *queryClientsIterator) setErr(err error) {
 
 func (it *queryClientsIterator) loop() {
 	defer func() {
+		it.cancel()
+		close(it.buffer)
 		for _, c := range it.clients {
 			it.setErr(c.CloseSend())
+		}
+		// cleaning our buffer
+		for c := range it.buffer {
+			if c != nil {
+				it.setErr(c.Close())
+			}
 		}
 	}()
 	for {
 		if len(it.clients) == 0 {
-			close(it.buffer)
 			return
 		}
 		it.buffer <- it.nextBatches()
@@ -527,7 +531,7 @@ func (it *queryClientsIterator) loop() {
 func (it *queryClientsIterator) Next() bool {
 	for it.curr == nil || !it.curr.Next() {
 		if it.curr != nil {
-			it.setErr(it.Close())
+			it.setErr(it.curr.Close())
 		}
 		it.curr = <-it.buffer
 		if it.curr == nil {

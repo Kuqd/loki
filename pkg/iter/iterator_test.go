@@ -2,6 +2,7 @@ package iter
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"sort"
@@ -384,12 +385,63 @@ func Test_PeekingIterator(t *testing.T) {
 	}
 }
 
+func Test_NewQueryClientsIteratorCorrectness(t *testing.T) {
+	// 3 ingesters returns the same data
+	iter := newFakeQueryClientsIteratorWithResponse(3, []*logproto.QueryResponse{
+		{
+			Streams: []*logproto.Stream{
+				mkStream(offset(0, identity), `{foobar: "baz1"}`),
+				mkStream(offset(0, identity), `{foobar: "baz3"}`),
+			},
+		},
+		{
+			Streams: []*logproto.Stream{
+				mkStream(offset(0, identity), `{foobar: "baz2"}`),
+				mkStream(offset(0, identity), `{foobar: "baz4"}`),
+			},
+		},
+	})
+	expected := NewQueryResponseIterator(context.Background(), &logproto.QueryResponse{
+		Streams: []*logproto.Stream{
+			mkStream(offset(0, identity), `{foobar: "baz1"}`),
+			mkStream(offset(0, identity), `{foobar: "baz2"}`),
+			mkStream(offset(0, identity), `{foobar: "baz3"}`),
+			mkStream(offset(0, identity), `{foobar: "baz4"}`),
+		},
+	}, logproto.BACKWARD)
+	res, count, err := ReadBatch(iter, 1000)
+	resExpected, countExpected, _ := ReadBatch(expected, 1000)
+	require.Nil(t, err)
+	require.Equal(t, countExpected, count)
+	compareResponse(t, resExpected, res)
+	err = iter.Close()
+	require.Nil(t, err)
+}
+
+func compareResponse(t *testing.T, expected, actual *logproto.QueryResponse) {
+	sort.Slice(expected.Streams, func(i, j int) bool {
+		return expected.Streams[i].Labels < expected.Streams[j].Labels
+	})
+	sort.Slice(actual.Streams, func(i, j int) bool {
+		return actual.Streams[i].Labels < actual.Streams[j].Labels
+	})
+	expectedB, err := json.Marshal(expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualB, err := json.Marshal(actual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	require.JSONEq(t, string(expectedB), string(actualB))
+
+}
+
 func mkQueryResponse(i int64) *logproto.QueryResponse {
 	return &logproto.QueryResponse{
 		Streams: []*logproto.Stream{
 			mkStream(offset(i, identity), `{foobar: "baz1"}`),
 			mkStream(offset(i, identity), `{foobar: "baz2"}`),
-			mkStream(offset(i, identity), `{foobar: "baz3"}`),
 		},
 	}
 }
@@ -474,13 +526,17 @@ func newFakeQueryClientIterator(ingesters int) EntryIterator {
 }
 
 func newFakeQueryClientsIterator(ingesters int) EntryIterator {
+	return newFakeQueryClientsIteratorWithResponse(ingesters, []*logproto.QueryResponse{
+		mkQueryResponse(1),
+		mkQueryResponse(2),
+	})
+}
+
+func newFakeQueryClientsIteratorWithResponse(ingesters int, res []*logproto.QueryResponse) EntryIterator {
 	clients := make([]QueryClient, ingesters)
 	for i := 0; i < ingesters; i++ {
 		clients[i] = &inMemoryQueryClient{
-			batches: []*logproto.QueryResponse{
-				mkQueryResponse(1),
-				mkQueryResponse(2),
-			},
+			batches: res,
 		}
 	}
 	return NewQueryClientsIterator(context.Background(), 1, logproto.BACKWARD, clients...)

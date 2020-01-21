@@ -153,15 +153,16 @@ func (q *Querier) Select(ctx context.Context, params logql.SelectParams) (iter.E
 	if err != nil {
 		return nil, err
 	}
+	iterators := []iter.EntryIterator{ingesterIterators}
 	chunkStoreIterators, err := q.store.LazyQuery(ctx, params)
 	if err != nil {
 		return nil, err
 	}
-	iterators := append(ingesterIterators, chunkStoreIterators)
+	iterators = append(iterators, chunkStoreIterators)
 	return iter.NewHeapIterator(ctx, iterators, params.Direction), nil
 }
 
-func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) ([]iter.EntryIterator, error) {
+func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams) (iter.EntryIterator, error) {
 	clients, err := q.forAllIngesters(ctx, func(client logproto.QuerierClient) (interface{}, error) {
 		return client.Query(ctx, params.QueryRequest)
 	})
@@ -169,11 +170,11 @@ func (q *Querier) queryIngesters(ctx context.Context, params logql.SelectParams)
 		return nil, err
 	}
 
-	iterators := make([]iter.EntryIterator, len(clients))
+	queryClients := make([]iter.QueryClient, len(clients))
 	for i := range clients {
-		iterators[i] = iter.NewQueryClientIterator(clients[i].response.(logproto.Querier_QueryClient), params.Direction)
+		queryClients[i] = clients[i].response.(logproto.Querier_QueryClient)
 	}
-	return iterators, nil
+	return iter.NewQueryClientsIterator(ctx, 1, params.Direction, queryClients...), nil
 }
 
 // Label does the heavy lifting for a Label query.
