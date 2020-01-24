@@ -3,7 +3,7 @@
 	"documentation": "https://github.com/grafana/loki",
 	"entrypoint": ["/bin/docker-driver"],
 	"network": {
-		"type": "host"
+		"type": "bridge"
 	},
 	"interface": {
 		"types": ["docker.logdriver/1.0"],
