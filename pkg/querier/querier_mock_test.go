@@ -275,6 +275,10 @@ func (r *readRingMock) ReplicationFactor() int {
 	return 1
 }
 
+func (r *readRingMock) Subring(uint32, int) (ring.ReadRing, error) {
+	return r, nil
+}
+
 func (r *readRingMock) IngesterCount() int {
 	return len(r.replicationSet.Ingesters)
 }
