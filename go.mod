@@ -35,6 +35,7 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
+	github.com/oklog/ulid v1.3.1
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
 	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
 	github.com/pkg/errors v0.8.1
@@ -50,6 +51,7 @@ require (
 	github.com/weaveworks/common v0.0.0-20200201141823-27e183090ab1
 	go.etcd.io/etcd v0.0.0-20190815204525-8f85f0dc2607 // indirect
 	golang.org/x/net v0.0.0-20191112182307-2180aed22343
+	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e
 	golang.org/x/sys v0.0.0-20191218084908-4a24b4065292 // indirect
 	google.golang.org/grpc v1.25.1
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
