@@ -17,6 +17,8 @@ type LazyChunk struct {
 	Chunk   chunk.Chunk
 	Fetcher *chunk.Fetcher
 
+	MinT, MaxT time.Time
+
 	cache *iter.CachedIterator
 }
 
@@ -34,14 +36,16 @@ func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direc
 	// So we cache filtered chunk entries to avoid to decompress multiple time the same chunk.
 	if filter != nil {
 		if c.cache == nil {
-			it, err := lokiChunk.Iterator(ctx, from, through, direction, filter)
+			// the underlaying iterator boundaries is clipped with the min and max of the request
+			// since on the next iteration from and through can be different and we want to make
+			// sure we cache everything we will need.
+			it, err := lokiChunk.Iterator(ctx, c.MinT, c.MaxT, direction, filter)
 			if err != nil {
 				return nil, err
 			}
 			c.cache = iter.NewCachedIterator(it)
 		}
-		c.cache.Reset()
-		return c.cache, nil
+		return iter.NewTimeRangedIterator(c.cache, from, through, direction), nil
 	}
 	return lokiChunk.Iterator(ctx, from, through, direction, filter)
 }

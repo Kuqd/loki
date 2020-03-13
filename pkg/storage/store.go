@@ -96,7 +96,12 @@ func (s *store) LazyQuery(ctx context.Context, req logql.SelectParams) (iter.Ent
 	lazyChunks := make([]*chunkenc.LazyChunk, 0, totalChunks)
 	for i := range chks {
 		for _, c := range chks[i] {
-			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{Chunk: c, Fetcher: fetchers[i]})
+			lazyChunks = append(lazyChunks, &chunkenc.LazyChunk{
+				Chunk:   c,
+				Fetcher: fetchers[i],
+				MinT:    req.Start,
+				MaxT:    req.End,
+			})
 		}
 	}
 	return newBatchChunkIterator(ctx, lazyChunks, s.cfg.MaxChunkBatchSize, matchers, filter, req.QueryRequest), nil

@@ -12,6 +12,7 @@ import (
 	"github.com/grafana/loki/pkg/chunkenc"
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 func Test_newBatchChunkIterator(t *testing.T) {
@@ -545,7 +546,9 @@ func Test_newBatchChunkIterator(t *testing.T) {
 	for name, tt := range tests {
 		tt := tt
 		t.Run(name, func(t *testing.T) {
-			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), nil, newQuery("", tt.start, tt.end, tt.direction))
+			it := newBatchChunkIterator(context.Background(), tt.chunks, tt.batchSize, newMatchers(tt.matchers), logql.LineFilterFunc(func(l []byte) bool {
+				return true
+			}), newQuery("", tt.start, tt.end, tt.direction))
 			streams, _, err := iter.ReadBatch(it, 1000)
 			_ = it.Close()
 			if err != nil {

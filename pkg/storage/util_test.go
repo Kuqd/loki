@@ -50,6 +50,8 @@ func newLazyChunk(stream logproto.Stream) *chunkenc.LazyChunk {
 	return &chunkenc.LazyChunk{
 		Fetcher: nil,
 		Chunk:   newChunk(stream),
+		MinT:    time.Unix(0, 0),
+		MaxT:    time.Unix(0, (100 * time.Millisecond).Nanoseconds()),
 	}
 }
 

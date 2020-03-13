@@ -470,34 +470,67 @@ func (i *nonOverlappingIterator) Close() error {
 type timeRangedIterator struct {
 	EntryIterator
 	mint, maxt time.Time
+	direction  logproto.Direction
 }
 
 // NewTimeRangedIterator returns an iterator which filters entries by time range.
-func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time) EntryIterator {
+func NewTimeRangedIterator(it EntryIterator, mint, maxt time.Time, direction logproto.Direction) EntryIterator {
 	return &timeRangedIterator{
 		EntryIterator: it,
 		mint:          mint,
 		maxt:          maxt,
+		direction:     direction,
 	}
 }
 
 func (i *timeRangedIterator) Next() bool {
-	ok := i.EntryIterator.Next()
+	if !i.EntryIterator.Next() {
+		i.EntryIterator.Close()
+		return false
+	}
+	var ok bool
+	if i.direction == logproto.FORWARD {
+		ok = i.nextForward()
+	} else {
+		ok = i.nextBackward()
+	}
 	if !ok {
 		i.EntryIterator.Close()
-		return ok
+		return false
 	}
+	return true
+}
+
+func (i *timeRangedIterator) nextForward() bool {
+	ok := true
 	ts := i.EntryIterator.Entry().Timestamp
 	for ok && i.mint.After(ts) {
 		ok = i.EntryIterator.Next()
+		if !ok {
+			break
+		}
 		ts = i.EntryIterator.Entry().Timestamp
 	}
 
 	if ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
 		ok = false
 	}
-	if !ok {
-		i.EntryIterator.Close()
+	return ok
+}
+
+func (i *timeRangedIterator) nextBackward() bool {
+	ok := true
+	ts := i.EntryIterator.Entry().Timestamp
+	for ok && (i.maxt.Before(ts) || i.maxt.Equal(ts)) { // The maxt is exclusive.
+		ok = i.EntryIterator.Next()
+		if !ok {
+			break
+		}
+		ts = i.EntryIterator.Entry().Timestamp
+	}
+
+	if ok && i.mint.After(ts) {
+		ok = false
 	}
 	return ok
 }
@@ -698,8 +731,8 @@ type CachedIterator struct {
 	curr   int
 }
 
-// NewCachedIterator create an iterator that cache iteration result and can be reset back to iterate again
-// without using the underlaying iterator `it`.
+// NewCachedIterator creates an iterator that cache iteration result and can be iterated again
+// after closing it without re-using the underlaying iterator `it`.
 func NewCachedIterator(it EntryIterator) *CachedIterator {
 	return &CachedIterator{
 		base:  it,
@@ -708,7 +741,7 @@ func NewCachedIterator(it EntryIterator) *CachedIterator {
 	}
 }
 
-func (it *CachedIterator) Reset() {
+func (it *CachedIterator) reset() {
 	it.curr = -1
 }
 
@@ -744,9 +777,6 @@ func (it *CachedIterator) Next() bool {
 }
 
 func (it *CachedIterator) Entry() logproto.Entry {
-	if it.curr == -1 {
-		return *it.cache[0]
-	}
 	return *it.cache[it.curr]
 }
 
@@ -757,6 +787,7 @@ func (it *CachedIterator) Labels() string {
 func (it *CachedIterator) Error() error { return nil }
 
 func (it *CachedIterator) Close() error {
+	it.reset()
 	if it.base != nil {
 		return it.base.Close()
 	}

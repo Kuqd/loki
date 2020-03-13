@@ -483,8 +483,9 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 	iterForward := iter.NewTimeRangedIterator(
 		iter.NewNonOverlappingIterator(its, ""),
-		time.Unix(0, mint),
-		time.Unix(0, maxt),
+		mintT,
+		maxtT,
+		logproto.FORWARD, // data in chunks is stored forward.
 	)
 
 	if direction == logproto.FORWARD {

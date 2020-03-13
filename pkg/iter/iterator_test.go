@@ -411,7 +411,8 @@ func Test_CacheIterator(t *testing.T) {
 
 	require.False(t, it.Next())
 
-	it.Reset()
+	require.Nil(t, it.Close())
+	// we should be able to give a second run.
 
 	require.True(t, it.Next())
 	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 1)}, it.Entry())
