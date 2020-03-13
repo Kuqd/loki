@@ -689,6 +689,7 @@ func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
 }
 
+// CachedIterator is an iterator that caches iteration to be replayed.
 type CachedIterator struct {
 	cache []*logproto.Entry
 	base  EntryIterator
@@ -697,6 +698,8 @@ type CachedIterator struct {
 	curr   int
 }
 
+// NewCachedIterator create an iterator that cache iteration result and can be reset back to iterate again
+// without using the underlaying iterator `it`.
 func NewCachedIterator(it EntryIterator) *CachedIterator {
 	return &CachedIterator{
 		base:  it,
@@ -741,6 +744,9 @@ func (it *CachedIterator) Next() bool {
 }
 
 func (it *CachedIterator) Entry() logproto.Entry {
+	if it.curr == -1 {
+		return *it.cache[0]
+	}
 	return *it.cache[it.curr]
 }
 

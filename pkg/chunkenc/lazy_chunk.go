@@ -40,6 +40,7 @@ func (c *LazyChunk) Iterator(ctx context.Context, from, through time.Time, direc
 			}
 			c.cache = iter.NewCachedIterator(it)
 		}
+		c.cache.Reset()
 		return c.cache, nil
 	}
 	return lokiChunk.Iterator(ctx, from, through, direction, filter)
