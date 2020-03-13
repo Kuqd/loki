@@ -688,3 +688,71 @@ func (it *peekingEntryIterator) Error() error {
 func (it *peekingEntryIterator) Close() error {
 	return it.iter.Close()
 }
+
+type CachedIterator struct {
+	cache []*logproto.Entry
+	base  EntryIterator
+
+	labels string
+	curr   int
+}
+
+func NewCachedIterator(it EntryIterator) *CachedIterator {
+	return &CachedIterator{
+		base:  it,
+		cache: make([]*logproto.Entry, 0, 1024),
+		curr:  -1,
+	}
+}
+
+func (it *CachedIterator) Reset() {
+	it.curr = -1
+}
+
+func (it *CachedIterator) load() {
+	if it.base != nil {
+		// set labels using the first entry
+		if !it.base.Next() {
+			return
+		}
+		it.labels = it.base.Labels()
+
+		// add all entries until the base iterator is exhausted
+		for {
+			e := it.base.Entry()
+			it.cache = append(it.cache, &e)
+			if !it.base.Next() {
+				break
+			}
+		}
+		it.base.Close()
+		it.base = nil
+	}
+}
+
+func (it *CachedIterator) Next() bool {
+	it.load()
+	if len(it.cache) == 0 {
+		it.cache = nil
+		return false
+	}
+	it.curr++
+	return it.curr < len(it.cache)
+}
+
+func (it *CachedIterator) Entry() logproto.Entry {
+	return *it.cache[it.curr]
+}
+
+func (it *CachedIterator) Labels() string {
+	return it.labels
+}
+
+func (it *CachedIterator) Error() error { return nil }
+
+func (it *CachedIterator) Close() error {
+	if it.base != nil {
+		return it.base.Close()
+	}
+	return nil
+}

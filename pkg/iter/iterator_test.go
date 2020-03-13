@@ -378,3 +378,52 @@ func Test_PeekingIterator(t *testing.T) {
 		t.Fatal("should not be ok.")
 	}
 }
+
+func Test_CacheIterator(t *testing.T) {
+
+	it := NewCachedIterator(NewStreamIterator(&logproto.Stream{
+		Entries: []logproto.Entry{
+			{
+				Timestamp: time.Unix(0, 1),
+			},
+			{
+				Timestamp: time.Unix(0, 2),
+			},
+			{
+				Timestamp: time.Unix(0, 3),
+			},
+		},
+		Labels: `{foo="bar"}`,
+	}))
+	defer it.Close()
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 1)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 2)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 3)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.False(t, it.Next())
+
+	it.Reset()
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 1)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 2)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.True(t, it.Next())
+	require.Equal(t, logproto.Entry{Timestamp: time.Unix(0, 3)}, it.Entry())
+	require.Equal(t, `{foo="bar"}`, it.Labels())
+
+	require.False(t, it.Next())
+}
