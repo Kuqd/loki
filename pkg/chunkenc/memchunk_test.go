@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cortexproject/cortex/pkg/chunk"
+	"github.com/prometheus/common/model"
+	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/dustin/go-humanize"
@@ -466,6 +469,17 @@ func TestChunkStats(t *testing.T) {
 
 	require.Equal(t, int64(expectedSize), s.Store.DecompressedBytes)
 	require.Equal(t, int64(inserted), s.Store.DecompressedLines)
+
+	cu := chunk.NewChunk(
+		"fake", 0, labels.Labels{{Name: "foo", Value: "bar"}},
+		NewFacade(cb),
+		model.TimeFromUnixNano(first.UnixNano()),
+		model.TimeFromUnixNano(entry.Timestamp.Add(time.Hour).UnixNano()),
+	)
+	if err := cu.Encode(); err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestIteratorClose(t *testing.T) {
