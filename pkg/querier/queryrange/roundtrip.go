@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
 	"github.com/go-kit/kit/log"
@@ -35,8 +34,23 @@ type Stopper interface {
 	Stop()
 }
 
+type noopStopper struct{}
+
+func (noopStopper) Stop() {}
+
+var NoopStopper Stopper = noopStopper{}
+
+type multiStopper []Stopper
+
+func (m multiStopper) Stop() {
+	for _, s := range m {
+		s.Stop()
+	}
+}
+
 // NewTripperware returns a Tripperware configured with middlewares to align, split and cache requests.
 func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer prometheus.Registerer) (frontend.Tripperware, Stopper, error) {
+	var stoppers []Stopper
 	// Ensure that QuerySplitDuration uses configuration defaults.
 	// This avoids divide by zero errors when determining cache keys where user specific overrides don't exist.
 	limits = WithDefaultLimits(limits, cfg.Config)
@@ -48,10 +62,13 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 	if err != nil {
 		return nil, nil, err
 	}
-	logFilterTripperware, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics)
+	stoppers = append(stoppers, cache)
+	logFilterTripperware, cache, err := NewLogFilterTripperware(cfg, log, limits, lokiCodec, instrumentMetrics, retryMetrics)
 	if err != nil {
 		return nil, nil, err
 	}
+	stoppers = append(stoppers, cache)
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		metricRT := metricsTripperware(next)
 		logFilterRT := logFilterTripperware(next)
@@ -92,7 +109,7 @@ func NewTripperware(cfg Config, log log.Logger, limits Limits, registerer promet
 			}
 			return next.RoundTrip(req)
 		})
-	}, cache, nil
+	}, multiStopper(stoppers), nil
 }
 
 // validates log entries limits
@@ -123,7 +140,7 @@ func NewLogFilterTripperware(
 	codec queryrange.Codec,
 	instrumentMetrics *queryrange.InstrumentMiddlewareMetrics,
 	retryMiddlewareMetrics *queryrange.RetryMiddlewareMetrics,
-) (frontend.Tripperware, error) {
+) (frontend.Tripperware, Stopper, error) {
 	queryRangeMiddleware := []queryrange.Middleware{StatsCollectorMiddleware(), queryrange.LimitsMiddleware(limits)}
 	if cfg.SplitQueriesByInterval != 0 {
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("split_by_interval", instrumentMetrics), SplitByIntervalMiddleware(limits, codec))
@@ -132,12 +149,31 @@ func NewLogFilterTripperware(
 		queryRangeMiddleware = append(queryRangeMiddleware, queryrange.InstrumentMiddleware("retry", instrumentMetrics), queryrange.NewRetryMiddleware(log, cfg.MaxRetries, retryMiddlewareMetrics))
 	}
 
+	s := NoopStopper
+	if cfg.CacheResults {
+		queryCacheMiddleware, stopper, err := NewLogResultsCacheMiddleware(
+			log,
+			cfg.ResultsCacheConfig,
+			cacheKeyLimits{limits},
+			limits,
+		)
+		if err != nil {
+			return nil, nil, err
+		}
+		s = stopper
+		queryRangeMiddleware = append(
+			queryRangeMiddleware,
+			queryrange.InstrumentMiddleware("log_results_cache", instrumentMetrics),
+			queryCacheMiddleware,
+		)
+	}
+
 	return func(next http.RoundTripper) http.RoundTripper {
 		if len(queryRangeMiddleware) > 0 {
 			return queryrange.NewRoundTripper(next, codec, queryRangeMiddleware...)
 		}
 		return next
-	}, nil
+	}, s, nil
 }
 
 // NewMetricTripperware creates a new frontend tripperware responsible for handling metric queries
@@ -170,7 +206,7 @@ func NewMetricTripperware(
 		SplitByIntervalMiddleware(limits, codec),
 	)
 
-	var c cache.Cache
+	s := NoopStopper
 	if cfg.CacheResults {
 		queryCacheMiddleware, cache, err := queryrange.NewResultsCacheMiddleware(
 			log,
@@ -183,7 +219,7 @@ func NewMetricTripperware(
 		if err != nil {
 			return nil, nil, err
 		}
-		c = cache
+		s = cache
 		queryRangeMiddleware = append(
 			queryRangeMiddleware,
 			queryrange.InstrumentMiddleware("results_cache", instrumentMetrics),
@@ -211,5 +247,5 @@ func NewMetricTripperware(
 			})
 		}
 		return next
-	}, c, nil
+	}, s, nil
 }

@@ -42,5 +42,5 @@ func NewLogResultsCacheMiddleware(
 }
 
 func (s logResultsCache) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
-	return nil, nil
+	return s.next.Do(ctx, r)
 }
