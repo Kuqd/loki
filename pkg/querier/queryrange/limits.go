@@ -53,8 +53,13 @@ type cacheKeyLimits struct {
 // a nonzero split interval when caching is enabled
 func (l cacheKeyLimits) GenerateCacheKey(userID string, r queryrange.Request) string {
 	split := l.QuerySplitDuration(userID)
-	currentInterval := r.GetStart() / int64(split/time.Millisecond)
 	// include both the currentInterval and the split duration in key to ensure
 	// a cache key can't be reused when an interval changes
+	if lokiRequest, ok := r.(*LokiRequest); ok {
+		// Loki is nanoseconds presice.
+		currentInterval := lokiRequest.StartTs.UnixNano() / int64(split)
+		return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), lokiRequest.Limit, currentInterval, split)
+	}
+	currentInterval := r.GetStart() / int64(split/time.Millisecond)
 	return fmt.Sprintf("%s:%s:%d:%d:%d", userID, r.GetQuery(), r.GetStep(), currentInterval, split)
 }

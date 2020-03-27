@@ -32,15 +32,28 @@ func TestLimits(t *testing.T) {
 	require.Equal(t, wrapped.QuerySplitDuration("a"), time.Minute)
 	require.Equal(t, wrapped.QuerySplitDuration("b"), time.Hour)
 
-	r := &LokiRequest{
-		Query:   "qry",
-		StartTs: time.Now(),
-		Step:    int64(time.Minute / time.Millisecond),
+	r := &queryrange.PrometheusRequest{
+		Query: "qry",
+		Start: time.Now().UnixNano() / int64(time.Millisecond),
+		Step:  int64(time.Minute / time.Millisecond),
 	}
 
 	require.Equal(
 		t,
 		fmt.Sprintf("%s:%s:%d:%d:%d", "a", r.GetQuery(), r.GetStep(), r.GetStart()/int64(time.Minute/time.Millisecond), int64(time.Minute)),
 		cacheKeyLimits{wrapped}.GenerateCacheKey("a", r),
+	)
+
+	lr := &LokiRequest{
+		Query:   "qry",
+		StartTs: time.Now(),
+		Step:    int64(time.Minute / time.Millisecond),
+		Limit:   1000,
+	}
+
+	require.Equal(
+		t,
+		fmt.Sprintf("%s:%s:%d:%d:%d", "b", r.GetQuery(), lr.Limit, lr.StartTs.UnixNano()/time.Hour.Nanoseconds(), int64(time.Hour)),
+		cacheKeyLimits{wrapped}.GenerateCacheKey("b", lr),
 	)
 }
