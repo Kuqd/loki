@@ -3,6 +3,8 @@ package queryrange
 import (
 	"context"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -15,6 +17,7 @@ import (
 
 	"github.com/cortexproject/cortex/pkg/chunk/cache"
 	"github.com/cortexproject/cortex/pkg/querier/queryrange"
+	"github.com/cortexproject/cortex/pkg/util/spanlogger"
 )
 
 type logResultsCache struct {
@@ -66,8 +69,139 @@ func (s logResultsCache) Do(ctx context.Context, r queryrange.Request) (queryran
 	}
 
 	cached, ok := s.get(ctx, key)
+	if ok {
+		response, extents, err = s.handleHit(ctx, r, cached)
+	} else {
+		// response, extents, err = s.handleMiss(ctx, r)
+	}
 
-	return s.next.Do(ctx, r)
+	if err == nil && len(extents) > 0 {
+		// extents, err := s.filterRecentExtents(r, extents)
+		// if err != nil {
+		// 	return nil, err
+		// }
+		s.put(ctx, key, extents)
+	}
+
+	return response, err
+}
+
+type Extent interface {
+	Start() time.Time
+	End() time.Time
+	TraceID() string
+	Extract(start, end time.Time) (queryrange.Response, error)
+}
+
+func (s logResultsCache) handleHit(ctx context.Context, r queryrange.Request, extents []queryrange.Extent) (queryrange.Response, []queryrange.Extent, error) {
+	var (
+		reqResps []queryrange.RequestResponse
+		err      error
+	)
+	log, ctx := spanlogger.New(ctx, "handleHit")
+	defer log.Finish()
+
+	requests, responses, err := partition(r, extents, s.extractor)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(requests) == 0 {
+		response, err := s.merger.MergeResponse(responses...)
+		// No downstream requests so no need to write back to the cache.
+		return response, nil, err
+	}
+
+	reqResps, err = DoRequests(ctx, s.next, requests, s.limits)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, reqResp := range reqResps {
+		responses = append(responses, reqResp.Response)
+		extent, err := toExtent(ctx, reqResp.Request, reqResp.Response)
+		if err != nil {
+			return nil, nil, err
+		}
+		extents = append(extents, extent)
+	}
+	sort.Slice(extents, func(i, j int) bool {
+		return extents[i].Start < extents[j].Start
+	})
+
+	// Merge any extents - they're guaranteed not to overlap.
+	accumulator, err := newAccumulator(extents[0])
+	if err != nil {
+		return nil, nil, err
+	}
+	mergedExtents := make([]Extent, 0, len(extents))
+
+	for i := 1; i < len(extents); i++ {
+		if accumulator.End+r.GetStep() < extents[i].Start {
+			mergedExtents, err = merge(mergedExtents, accumulator)
+			if err != nil {
+				return nil, nil, err
+			}
+			accumulator, err = newAccumulator(extents[i])
+			if err != nil {
+				return nil, nil, err
+			}
+			continue
+		}
+
+		accumulator.TraceId = jaegerTraceID(ctx)
+		accumulator.End = extents[i].End
+		currentRes, err := extents[i].toResponse()
+		if err != nil {
+			return nil, nil, err
+		}
+		merged, err := s.merger.MergeResponse(accumulator.Response, currentRes)
+		if err != nil {
+			return nil, nil, err
+		}
+		accumulator.Response = merged
+	}
+
+	mergedExtents, err = merge(mergedExtents, accumulator)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	response, err := s.merger.MergeResponse(responses...)
+	return response, mergedExtents, err
+}
+
+// partition calculates the required requests to satisfy req given the cached data.
+func partition(req queryrange.Request, extents []Extent) ([]queryrange.Request, []queryrange.Response, error) {
+	var requests []queryrange.Request
+	var cachedResponses []queryrange.Response
+	start := req.GetStart()
+
+	for _, extent := range extents {
+		// If there is no overlap, ignore this extent.
+		if extent.End() < start || extent.Start() > req.GetEnd() {
+			continue
+		}
+
+		// If there is a bit missing at the front, make a request for that.
+		if start < extent.Start {
+			r := req.WithStartEnd(start, extent.Start)
+			requests = append(requests, r)
+		}
+		res, err := extent.toResponse()
+		if err != nil {
+			return nil, nil, err
+		}
+		// extract the overlap from the cached extent.
+		cachedResponses = append(cachedResponses, extractor.Extract(start, req.GetEnd(), res))
+		start = extent.End
+	}
+
+	if start < req.GetEnd() {
+		r := req.WithStartEnd(start, req.GetEnd())
+		requests = append(requests, r)
+	}
+
+	return requests, cachedResponses, nil
 }
 
 func (s logResultsCache) get(ctx context.Context, key string) ([]queryrange.Extent, bool) {
