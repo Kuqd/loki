@@ -43,3 +43,11 @@ message LokiPromResponse {
   queryrange.PrometheusResponse response = 1 [(gogoproto.nullable) = true];
   stats.Result statistics = 2 [(gogoproto.nullable) = false];
 }
+
+message ResultCacheItem {
+  string key = 1 [(gogoproto.jsontag) = "key"];
+  google.protobuf.Timestamp Start = 2 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  google.protobuf.Timestamp End = 3 [(gogoproto.stdtime) = true, (gogoproto.nullable) = false];
+  string trace_id = 4 [(gogoproto.jsontag) = "-"];
+  LokiResponse response = 5 [(gogoproto.nullable) = true];;
+}

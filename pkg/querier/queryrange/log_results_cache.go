@@ -2,6 +2,7 @@ package queryrange
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"sort"
 	"time"
@@ -11,7 +12,6 @@ import (
 	proto "github.com/gogo/protobuf/proto"
 	"github.com/opentracing/opentracing-go"
 	otlog "github.com/opentracing/opentracing-go/log"
-	"github.com/prometheus/common/model"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
 
@@ -53,6 +53,13 @@ func NewLogResultsCacheMiddleware(
 }
 
 func (s logResultsCache) Do(ctx context.Context, r queryrange.Request) (queryrange.Response, error) {
+	if lokiRequest, ok := r.(*LokiRequest); ok {
+		return s.do(ctx, lokiRequest)
+	}
+	return nil, fmt.Errorf("unexpected request type: %v", r)
+}
+
+func (s logResultsCache) do(ctx context.Context, r *LokiRequest) (queryrange.Response, error) {
 	userID, err := user.ExtractOrgID(ctx)
 	if err != nil {
 		return nil, httpgrpc.Errorf(http.StatusBadRequest, err.Error())
@@ -63,8 +70,8 @@ func (s logResultsCache) Do(ctx context.Context, r queryrange.Request) (queryran
 		extents  []queryrange.Extent
 		response queryrange.Response
 	)
-	maxCacheTime := int64(model.Now().Add(-s.cfg.MaxCacheFreshness))
-	if r.GetStart() > maxCacheTime {
+
+	if r.StartTs.After(time.Now().Add(-s.cfg.MaxCacheFreshness)) {
 		return s.next.Do(ctx, r)
 	}
 
@@ -84,13 +91,6 @@ func (s logResultsCache) Do(ctx context.Context, r queryrange.Request) (queryran
 	}
 
 	return response, err
-}
-
-type Extent interface {
-	Start() time.Time
-	End() time.Time
-	TraceID() string
-	Extract(start, end time.Time) (queryrange.Response, error)
 }
 
 func (s logResultsCache) handleHit(ctx context.Context, r queryrange.Request, extents []queryrange.Extent) (queryrange.Response, []queryrange.Extent, error) {
@@ -204,38 +204,30 @@ func partition(req queryrange.Request, extents []Extent) ([]queryrange.Request, 
 	return requests, cachedResponses, nil
 }
 
-func (s logResultsCache) get(ctx context.Context, key string) ([]queryrange.Extent, bool) {
+func (s logResultsCache) get(ctx context.Context, key string) (*ResultCacheItem, bool) {
 	found, bufs, _ := s.cache.Fetch(ctx, []string{cache.HashKey(key)})
 	if len(found) != 1 {
 		return nil, false
 	}
+	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-cache-item")
+	defer sp.Finish()
 
 	// todo uncompress
 
-	var resp queryrange.CachedResponse
-	sp, _ := opentracing.StartSpanFromContext(ctx, "unmarshal-extent")
-	defer sp.Finish()
-
+	var cacheItem *ResultCacheItem
 	sp.LogFields(otlog.Int("bytes", len(bufs[0])))
 
-	if err := proto.Unmarshal(bufs[0], &resp); err != nil {
+	if err := proto.Unmarshal(bufs[0], cacheItem); err != nil {
 		level.Error(s.logger).Log("msg", "error unmarshalling cached value", "err", err)
 		sp.LogFields(otlog.Error(err))
 		return nil, false
 	}
 
-	if resp.Key != key {
+	if cacheItem.Key != key {
 		return nil, false
 	}
 
-	// Refreshes the cache if it contains an old proto schema.
-	for _, e := range resp.Extents {
-		if e.Response == nil {
-			return nil, false
-		}
-	}
-
-	return resp.Extents, true
+	return cacheItem, true
 }
 
 func (s logResultsCache) put(ctx context.Context, key string, extents []queryrange.Extent) {
