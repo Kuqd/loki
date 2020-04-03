@@ -3,6 +3,7 @@ package stages
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"text/template"
@@ -83,12 +84,12 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if o.cfgs == nil {
 		return
 	}
-	level.Warn(o.logger).Log("msg", "template extracted received", "extracted", extracted)
+	level.Warn(o.logger).Log("msg", "template extracted received", "extracted", fmt.Sprintf("%v+", extracted))
 	td := make(map[string]interface{})
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
-			level.Warn(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
+			level.Warn(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v), "key", k)
 			continue
 		}
 		td[k] = s
@@ -96,7 +97,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			td["Value"] = s
 		}
 	}
-	level.Warn(o.logger).Log("msg", "template data in", "in", td)
+	level.Warn(o.logger).Log("msg", "template data passed in", "in", fmt.Sprintf("%v+", td))
 
 	buf := &bytes.Buffer{}
 	err := o.template.Execute(buf, td)
