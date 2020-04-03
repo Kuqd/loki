@@ -83,13 +83,12 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 	if o.cfgs == nil {
 		return
 	}
+	level.Warn(o.logger).Log("msg", "template extracted received", "extracted", extracted)
 	td := make(map[string]interface{})
 	for k, v := range extracted {
 		s, err := getString(v)
 		if err != nil {
-			if Debug {
-				level.Debug(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
-			}
+			level.Warn(o.logger).Log("msg", "extracted template could not be converted to a string", "err", err, "type", reflect.TypeOf(v))
 			continue
 		}
 		td[k] = s
@@ -97,6 +96,7 @@ func (o *templateStage) Process(labels model.LabelSet, extracted map[string]inte
 			td["Value"] = s
 		}
 	}
+	level.Warn(o.logger).Log("msg", "template data in", "in", td)
 
 	buf := &bytes.Buffer{}
 	err := o.template.Execute(buf, td)
