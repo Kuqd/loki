@@ -88,13 +88,13 @@ func (p *Pipeline) Process(labels model.LabelSet, extracted map[string]interface
 
 	for i, stage := range p.stages {
 		if Debug {
-			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts, "entry", entry)
+			level.Debug(p.logger).Log("msg", "processing pipeline", "stage", i, "name", stage.Name(), "labels", labels, "time", ts)
 		}
 		stage.Process(labels, extracted, ts, entry)
 	}
 	dur := time.Since(start).Seconds()
 	if Debug {
-		level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "entry", entry, "duration_s", dur)
+		level.Debug(p.logger).Log("msg", "finished processing log line", "labels", labels, "time", ts, "duration_s", dur)
 	}
 	if p.jobName != nil {
 		p.plDuration.WithLabelValues(*p.jobName).Observe(dur)
