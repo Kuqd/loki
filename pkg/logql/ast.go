@@ -13,7 +13,10 @@ import (
 
 	"github.com/grafana/loki/pkg/iter"
 	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql/regexp"
 )
+
+type LineFilter regexp.LineFilter
 
 // Expr is the root expression which can be a SampleExpr or LogSelectorExpr
 type Expr interface {
@@ -122,7 +125,7 @@ func (e *filterExpr) String() string {
 }
 
 func (e *filterExpr) Filter() (LineFilter, error) {
-	f, err := newFilter(e.match, e.ty)
+	f, err := regexp.NewFilter(e.match, e.ty)
 	if err != nil {
 		return nil, err
 	}
@@ -131,9 +134,9 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 		if err != nil {
 			return nil, err
 		}
-		f = newAndFilter(nextFilter, f)
+		f = regexp.NewAndFilter(nextFilter, f)
 	}
-	if f == TrueFilter {
+	if f == regexp.TrueFilter {
 		return nil, nil
 	}
 	return f, nil
