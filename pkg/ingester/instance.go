@@ -23,6 +23,7 @@ import (
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/regexp"
 	"github.com/grafana/loki/pkg/logql/stats"
 	"github.com/grafana/loki/pkg/util"
 )
@@ -296,7 +297,11 @@ outer:
 			return ErrStreamMissing
 		}
 		for _, filter := range filters {
-			if !filter.Matches(stream.labels.Get(filter.Name)) {
+			f, err := regexp.NewFilter(filter.Value, filter.Type)
+			if err != nil {
+				return err
+			}
+			if !f.Filter([]byte(stream.labels.Get(filter.Name))) {
 				continue outer
 			}
 		}

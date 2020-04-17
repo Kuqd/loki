@@ -22,7 +22,7 @@ import (
 
 	"github.com/grafana/loki/pkg/ingester/client"
 	"github.com/grafana/loki/pkg/logproto"
-	"github.com/grafana/loki/pkg/logql"
+	"github.com/grafana/loki/pkg/logql/regexp"
 )
 
 func TestTransferOut(t *testing.T) {
@@ -91,7 +91,7 @@ func TestTransferOut(t *testing.T) {
 				time.Unix(0, 0),
 				time.Unix(10, 0),
 				logproto.FORWARD,
-				logql.LineFilterFunc(func([]byte) bool { return true }),
+				regexp.LineFilterFunc(func([]byte) bool { return true }),
 			)
 			if !assert.NoError(t, err) {
 				continue
