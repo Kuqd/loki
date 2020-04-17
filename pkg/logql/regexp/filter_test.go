@@ -144,6 +144,7 @@ func Benchmark_LineFilter(b *testing.B) {
 		{".*foo.*|bar|uzz"},
 		{"((f.*)|foobar.*)|.*buzz"},
 		{"(?P<foo>.*foo.*|bar)"},
+		{"(?:foo)"},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
 		benchmarkRegex(b, test.re, logline, false)
