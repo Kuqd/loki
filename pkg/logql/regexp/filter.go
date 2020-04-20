@@ -101,7 +101,7 @@ type regexpFilter struct {
 // newRegexpFilter creates a new line filter for a given regexp.
 // If match is false the filter is the negation of the regexp.
 func newRegexpFilter(re string, match bool) (LineFilter, error) {
-	reg, err := regexp.Compile(re)
+	reg, err := regexp.Compile("(?:" + re + ")")
 	if err != nil {
 		return nil, err
 	}

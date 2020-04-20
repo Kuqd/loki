@@ -2,6 +2,7 @@ package regexp
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -127,9 +128,47 @@ func Test_TrueFilter(t *testing.T) {
 	}
 }
 
+var logline = `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms`
+
+func Benchmark_CancelCapture(b *testing.B) {
+	b.ReportAllocs()
+	for _, test := range []struct {
+		re string
+	}{
+
+		// {"((f.*)|foobar.*)|.*buzz"},
+		{"logging.*"},
+		{"logg(ing.*)"},
+		{"(?:logging.*)"},
+		// {"(fo.*)"},
+		// {"(foo|fo{1,2})"},
+	} {
+		normal, err := regexp.Compile(test.re)
+		if err != nil {
+			b.Fatal(err)
+		}
+		// nocap, err := regexp.Compile("(?:" + test.re + ")")
+		// if err != nil {
+		// 	b.Fatal(err)
+		// }
+		b.ResetTimer()
+		// b.Run(fmt.Sprintf("nocap_%s", test.re), func(b *testing.B) {
+		// 	for i := 0; i < b.N; i++ {
+		// 		nocap.Match([]byte(logline))
+		// 	}
+		// })
+		b.Run(fmt.Sprintf("normal_%s", test.re), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				if normal.Match([]byte(logline)) {
+
+				}
+			}
+		})
+	}
+}
+
 func Benchmark_LineFilter(b *testing.B) {
 	b.ReportAllocs()
-	logline := `level=bar ts=2020-02-22T14:57:59.398312973Z caller=logging.go:44 traceID=2107b6b551458908 msg="GET /buzz (200) 4.599635ms`
 	for _, test := range []struct {
 		re string
 	}{

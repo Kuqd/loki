@@ -287,21 +287,25 @@ func (i *instance) forMatchingStreams(
 	i.streamsMtx.RLock()
 	defer i.streamsMtx.RUnlock()
 
-	filters, matchers := cutil.SplitFiltersAndMatchers(matchers)
+	filtersMatchers, matchers := cutil.SplitFiltersAndMatchers(matchers)
 	ids := i.index.Lookup(matchers)
 
+	var filters []regexp.LineFilter
+	for _, filter := range filtersMatchers {
+		f, err := regexp.NewFilter(filter.Value, filter.Type)
+		if err != nil {
+			return err
+		}
+		filters = append(filters, f)
+	}
 outer:
 	for _, streamID := range ids {
 		stream, ok := i.streams[streamID]
 		if !ok {
 			return ErrStreamMissing
 		}
-		for _, filter := range filters {
-			f, err := regexp.NewFilter(filter.Value, filter.Type)
-			if err != nil {
-				return err
-			}
-			if !f.Filter([]byte(stream.labels.Get(filter.Name))) {
+		for i, f := range filters {
+			if !f.Filter([]byte(stream.labels.Get(filtersMatchers[i].Name))) {
 				continue outer
 			}
 		}
