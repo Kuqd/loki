@@ -1,8 +1,9 @@
 module github.com/grafana/loki
 
-go 1.13
+go 1.14
 
 require (
+	code.cloudfoundry.org/bytefmt v0.0.0-20200131002437-cf55d5288a48 // indirect
 	github.com/Microsoft/go-winio v0.4.12 // indirect
 	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/bmatcuk/doublestar v1.2.2
@@ -19,7 +20,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fatih/color v1.7.0
 	github.com/fluent/fluent-bit-go v0.0.0-20190925192703-ea13c021720c
-	github.com/frankban/quicktest v1.7.2 // indirect
+	github.com/frankban/quicktest v1.9.0 // indirect
 	github.com/go-kit/kit v0.9.0
 	github.com/go-logfmt/logfmt v0.4.0
 	github.com/gogo/protobuf v1.3.1 // remember to update loki-build-image/Dockerfile too
@@ -37,13 +38,18 @@ require (
 	github.com/mitchellh/mapstructure v1.1.2
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f
+	github.com/onsi/ginkgo v1.12.0 // indirect
+	github.com/onsi/gomega v1.9.0 // indirect
 	github.com/opentracing/opentracing-go v1.1.1-0.20200124165624-2876d2018785
-	github.com/pierrec/lz4 v2.3.1-0.20191115212037-9085dacd1e1e+incompatible
+	github.com/pierrec/cmdflag v0.0.2 // indirect
+	github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.5.0
 	github.com/prometheus/client_model v0.2.0
 	github.com/prometheus/common v0.9.1
 	github.com/prometheus/prometheus v1.8.2-0.20200213233353-b90be6f32a33
+	github.com/schollz/progressbar v1.0.0 // indirect
+	github.com/schollz/progressbar/v3 v3.1.1 // indirect
 	github.com/shurcooL/httpfs v0.0.0-20190707220628-8d4bc4ba7749
 	github.com/shurcooL/vfsgen v0.0.0-20181202132449-6a9ea43bcacd
 	github.com/stretchr/testify v1.5.1
@@ -69,3 +75,5 @@ replace k8s.io/client-go => k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
 replace github.com/Azure/azure-sdk-for-go => github.com/Azure/azure-sdk-for-go v36.2.0+incompatible
 
 replace github.com/Azure/go-autorest => github.com/Azure/go-autorest v13.3.0+incompatible
+
+replace github.com/pierrec/lz4 => github.com/pierrec/lz4 v1.0.2-0.20200429202014-6441bd642909

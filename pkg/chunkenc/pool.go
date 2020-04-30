@@ -154,17 +154,17 @@ func (l *lz4Reader) Reset(src io.Reader) {
 	l.r.Reset(src)
 }
 
-func (l *lz4Reader) onBlockDone(_ int) {
-	// remember max block size used.
-	if l.r.BlockMaxSize > l.maxBlockSize {
-		l.maxBlockSize = l.r.BlockMaxSize
-	}
-}
+// func (l *lz4Reader) onBlockDone(_ int) {
+// 	// remember max block size used.
+// 	// if l.r.BlockMaxSize > l.maxBlockSize {
+// 	// 	l.maxBlockSize = l.r.BlockMaxSize
+// 	// }
+// }
 
 func newLz4Reader(src io.Reader) *lz4Reader {
 	lz4r := lz4.NewReader(src)
 	r := &lz4Reader{r: lz4r}
-	lz4r.OnBlockDone = r.onBlockDone
+	// lz4r.OnBlockDone = r.onBlockDone
 	return r
 }
 
@@ -182,14 +182,6 @@ func (pool *LZ4Pool) GetReader(src io.Reader) io.Reader {
 
 // PutReader places back in the pool a CompressionReader
 func (pool *LZ4Pool) PutReader(reader io.Reader) {
-	r := reader.(*lz4Reader)
-	if r.maxBlockSize > pool.bufferSize {
-		// Readers base their buffer size based on headers from LZ4 stream.
-		// If this reader uses bigger buffer than what we use currently, don't pool it.
-		// Reading from a couple of chunks that used big buffer sizes could otherwise quickly lead
-		// to high pooled memory usage.
-		return
-	}
 	pool.readers.Put(reader)
 }
 
@@ -201,7 +193,6 @@ func (pool *LZ4Pool) GetWriter(dst io.Writer) io.WriteCloser {
 		return writer
 	}
 	w := lz4.NewWriter(dst)
-	w.BlockMaxSize = pool.bufferSize
 	return w
 }
 
