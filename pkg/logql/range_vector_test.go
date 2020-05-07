@@ -43,6 +43,13 @@ func newEntryIterator() iter.EntryIterator {
 	}, logproto.FORWARD)
 }
 
+func newfakeSeriesIterator() SeriesIterator {
+	return &seriesIterator{
+		iter:    iter.NewPeekingIterator(newEntryIterator()),
+		sampler: defaultSampleExtractor,
+	}
+}
+
 func newPoint(t time.Time, v float64) promql.Point {
 	return promql.Point{T: t.UnixNano() / 1e+6, V: v}
 }
@@ -123,7 +130,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
-				it := newRangeVectorIterator(newEntryIterator(), tt.selRange,
+				it := newRangeVectorIterator(newfakeSeriesIterator(), tt.selRange,
 					tt.step, time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
 
 				i := 0

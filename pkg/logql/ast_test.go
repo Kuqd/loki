@@ -57,6 +57,10 @@ func Test_SampleExpr_String(t *testing.T) {
 		`topk(10,sum(rate({region="us-east1"}[5m])) by (name))`,
 		`avg( rate( ( {job="nginx"} |= "GET" ) [10s] ) ) by (region)`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m]))`,
+		`sum by (cluster) (count_over_time({job="mysql"} | regexp "(?P<f>foo)"[5m]))`,
+		`sum by (cluster) (count_over_time({job="mysql"} |= "bar" | regexp "(?P<f>foo)"[5m]))`,
+		`sum by (cluster) (count_over_time({job="mysql"} |= "bar" |~ "buzz" | regexp "(?P<f>foo)"[5m]))`,
+		`{job="mysql"} |= "bar" |~ "buzz" | regexp "(?P<f>foo)"`,
 		`sum by (cluster) (count_over_time({job="mysql"}[5m])) / sum by (cluster) (count_over_time({job="postgres"}[5m])) `,
 		`
 		sum by (cluster) (count_over_time({job="postgres"}[5m])) /
@@ -73,8 +77,8 @@ func Test_SampleExpr_String(t *testing.T) {
 		t.Run(tc, func(t *testing.T) {
 			expr, err := ParseExpr(tc)
 			require.Nil(t, err)
-
-			expr2, err := ParseExpr(expr.String())
+			s := expr.String()
+			expr2, err := ParseExpr(s)
 			require.Nil(t, err)
 			require.Equal(t, expr, expr2)
 		})

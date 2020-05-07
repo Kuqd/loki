@@ -50,6 +50,7 @@ type Querier interface {
 type LogSelectorExpr interface {
 	Filter() (LineFilter, error)
 	Matchers() []*labels.Matcher
+	Extractor() (Extractor, error)
 	Expr
 }
 
@@ -79,6 +80,10 @@ func (e *matchersExpr) String() string {
 }
 
 func (e *matchersExpr) Filter() (LineFilter, error) {
+	return nil, nil
+}
+
+func (e *matchersExpr) Extractor() (Extractor, error) {
 	return nil, nil
 }
 
@@ -139,6 +144,10 @@ func (e *filterExpr) Filter() (LineFilter, error) {
 	return f, nil
 }
 
+func (e *filterExpr) Extractor() (Extractor, error) {
+	return nil, nil
+}
+
 // impl Expr
 func (e *filterExpr) logQLExpr() {}
 
@@ -194,8 +203,14 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpTypeCountOverTime = "count_over_time"
-	OpTypeRate          = "rate"
+	OpRangeTypeCount  = "count_over_time"
+	OpRangeTypeRate   = "rate"
+	OpRangeTypeSum    = "sum_over_time"
+	OpRangeTypeAvg    = "avg_over_time"
+	OpRangeTypeMax    = "max_over_time"
+	OpRangeTypeMin    = "min_over_time"
+	OpRangeTypeStddev = "stddev_over_time"
+	OpRangeTypeStdvar = "stdvar_over_time"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -209,6 +224,9 @@ const (
 	OpTypeDiv = "/"
 	OpTypeMod = "%"
 	OpTypePow = "^"
+
+	// extractors
+	OpExtractRegexp = "regexp"
 )
 
 // IsLogicalBinOp tests whether an operation is a logical/set binary operation
@@ -224,6 +242,52 @@ type SampleExpr interface {
 	Operations() []string
 	Expr
 }
+
+type extractExpr struct {
+	operation string
+	params    string
+
+	ex   Extractor
+	left LogSelectorExpr
+}
+
+func newExtractExpr(left LogSelectorExpr, operation, params string) *extractExpr {
+	e, err := newExtractor(operation, params)
+	if err != nil {
+		panic(newParseError(err.Error(), 0, 0))
+	}
+	return &extractExpr{
+		operation: operation,
+		params:    params,
+		left:      left,
+		ex:        e,
+	}
+}
+
+func (e *extractExpr) Matchers() []*labels.Matcher {
+	return e.left.Matchers()
+}
+
+func (e *extractExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString(e.left.String())
+	sb.WriteString(" | ")
+	sb.WriteString(e.operation)
+	sb.WriteString(" ")
+	sb.WriteString(strconv.Quote(e.params))
+	return sb.String()
+}
+
+func (e *extractExpr) Extractor() (Extractor, error) {
+	return e.ex, nil
+}
+
+func (e *extractExpr) Filter() (LineFilter, error) {
+	return e.left.Filter()
+}
+
+// impl Expr
+func (e *extractExpr) logQLExpr() {}
 
 type rangeAggregationExpr struct {
 	left      *logRange
@@ -443,10 +507,11 @@ func (e *literalExpr) String() string {
 // literlExpr impls SampleExpr & LogSelectorExpr mainly to reduce the need for more complicated typings
 // to facilitate sum types. We'll be type switching when evaluating them anyways
 // and they will only be present in binary operation legs.
-func (e *literalExpr) Selector() LogSelectorExpr   { return e }
-func (e *literalExpr) Operations() []string        { return nil }
-func (e *literalExpr) Filter() (LineFilter, error) { return nil, nil }
-func (e *literalExpr) Matchers() []*labels.Matcher { return nil }
+func (e *literalExpr) Selector() LogSelectorExpr     { return e }
+func (e *literalExpr) Operations() []string          { return nil }
+func (e *literalExpr) Filter() (LineFilter, error)   { return nil, nil }
+func (e *literalExpr) Matchers() []*labels.Matcher   { return nil }
+func (e *literalExpr) Extractor() (Extractor, error) { return nil, nil }
 
 // helper used to impl Stringer for vector and range aggregations
 // nolint:interfacer

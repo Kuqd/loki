@@ -101,8 +101,18 @@ func (ev *defaultEvaluator) Iterator(ctx context.Context, expr LogSelectorExpr, 
 	if GetRangeType(q) == InstantType {
 		params.Start = params.Start.Add(-ev.maxLookBackPeriod)
 	}
-
-	return ev.querier.Select(ctx, params)
+	extractor, err := expr.Extractor()
+	if err != nil {
+		return nil, err
+	}
+	iter, err := ev.querier.Select(ctx, params)
+	if err != nil {
+		return nil, err
+	}
+	if extractor == nil {
+		return iter, nil
+	}
+	return newPreviewExtractor(extractor, iter), nil
 
 }
 
@@ -336,14 +346,19 @@ func rangeAggEvaluator(
 	expr *rangeAggregationExpr,
 	q Params,
 ) (StepEvaluator, error) {
-	vecIter := newRangeVectorIterator(entryIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
+
+	seriesIter, err := newSeriesIterator(expr, entryIter)
+	if err != nil {
+		return nil, err
+	}
+	vecIter := newRangeVectorIterator(seriesIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano())
 
 	var fn RangeVectorAggregator
 	switch expr.operation {
-	case OpTypeRate:
+	case OpRangeTypeRate:
 		fn = rate(expr.left.interval)
-	case OpTypeCountOverTime:
+	case OpRangeTypeCount:
 		fn = count
 	}
 

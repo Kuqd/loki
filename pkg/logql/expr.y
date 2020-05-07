@@ -17,6 +17,7 @@ import (
   Matcher                 *labels.Matcher
   Matchers                []*labels.Matcher
   RangeAggregationExpr    SampleExpr
+  ExtractExpr             LogSelectorExpr
   RangeOp                 string
   Selector                []*labels.Matcher
   VectorAggregationExpr   SampleExpr
@@ -41,6 +42,7 @@ import (
 %type <Matcher>               matcher
 %type <Matchers>              matchers
 %type <RangeAggregationExpr>  rangeAggregationExpr
+%type <ExtractExpr>           extractExpr
 %type <RangeOp>               rangeOp
 %type <Selector>              selector
 %type <VectorAggregationExpr> vectorAggregationExpr
@@ -52,6 +54,7 @@ import (
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
+                  PIPE EXTRACT_REGEXP SUM_OVER_TIME AVG_OVER_TIME MAX_OVER_TIME MIN_OVER_TIME STDDEV_OVER_TIME STDVAR_OVER_TIME
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -67,6 +70,7 @@ root: expr { exprlex.(*lexer).expr = $1 };
 expr:
       logExpr                                      { $$ = $1 }
     | metricExpr                                   { $$ = $1 }
+    | extractExpr                                  { $$ = $1 }
     ;
 
 metricExpr:
@@ -85,8 +89,14 @@ logExpr:
     | logExpr error
     ;
 
+extractExpr:
+      logExpr PIPE EXTRACT_REGEXP STRING { $$ = newExtractExpr($1, OpExtractRegexp, $4) }
+    | OPEN_PARENTHESIS extractExpr CLOSE_PARENTHESIS  { $$ = $2 }
+    ;
+
 logRangeExpr:
       logExpr DURATION { $$ = newLogRange($1, $2) } // <selector> <filters> <range>
+    | extractExpr DURATION { $$ = newLogRange($1, $2) }
     | logRangeExpr filter STRING                       { $$ = addFilterToLogRangeExpr( $1, $2, $3 ) }
     | OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS  { $$ = $2 }
     | logRangeExpr filter error
@@ -166,8 +176,14 @@ vectorOp:
       ;
 
 rangeOp:
-      COUNT_OVER_TIME { $$ = OpTypeCountOverTime }
-    | RATE            { $$ = OpTypeRate }
+      COUNT_OVER_TIME  { $$ = OpRangeTypeCount }
+    | RATE             { $$ = OpRangeTypeRate }
+    | SUM_OVER_TIME    { $$ = OpRangeTypeSum }
+    | AVG_OVER_TIME    { $$ = OpRangeTypeAvg }
+    | MAX_OVER_TIME    { $$ = OpRangeTypeMax }
+    | MIN_OVER_TIME    { $$ = OpRangeTypeMin }
+    | STDDEV_OVER_TIME { $$ = OpRangeTypeStddev }
+    | STDVAR_OVER_TIME { $$ = OpRangeTypeStdvar }
     ;
 
 
