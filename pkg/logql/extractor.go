@@ -284,6 +284,7 @@ func (l *sampleExtractor) From(lbs string, entry logproto.Entry) (Sample, bool) 
 			if err != nil {
 				return Sample{}, false
 			}
+			continue
 		}
 		m[f] = values[i]
 	}
