@@ -153,6 +153,9 @@ func (e *seriesIterator) Peek() (Sample, bool) {
 		if ok {
 			break
 		}
+		if !e.iter.Next() {
+			return Sample{}, false
+		}
 	}
 	e.updated = true
 	return e.cur, true
