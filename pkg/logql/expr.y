@@ -54,7 +54,7 @@ import (
 %token <duration> DURATION
 %token <val>      MATCHERS LABELS EQ NEQ RE NRE OPEN_BRACE CLOSE_BRACE OPEN_BRACKET CLOSE_BRACKET COMMA DOT PIPE_MATCH PIPE_EXACT
                   OPEN_PARENTHESIS CLOSE_PARENTHESIS BY WITHOUT COUNT_OVER_TIME RATE SUM AVG MAX MIN COUNT STDDEV STDVAR BOTTOMK TOPK
-                  PIPE EXTRACT_REGEXP SUM_OVER_TIME AVG_OVER_TIME MAX_OVER_TIME MIN_OVER_TIME STDDEV_OVER_TIME STDVAR_OVER_TIME
+                  PIPE EXTRACT_REGEXP SUM_OVER_TIME AVG_OVER_TIME MAX_OVER_TIME MIN_OVER_TIME STDDEV_OVER_TIME STDVAR_OVER_TIME QUANTILE_OVER_TIME
 
 // Operators are listed with increasing precedence.
 %left <binOp> OR
@@ -103,7 +103,10 @@ logRangeExpr:
     | logRangeExpr error
     ;
 
-rangeAggregationExpr: rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS { $$ = newRangeAggregationExpr($3,$1) };
+rangeAggregationExpr:
+      rangeOp OPEN_PARENTHESIS logRangeExpr CLOSE_PARENTHESIS                { $$ = newRangeAggregationExpr($3,$1,nil) }
+    | rangeOp OPEN_PARENTHESIS NUMBER COMMA logRangeExpr CLOSE_PARENTHESIS   { $$ = newRangeAggregationExpr($5,$1,&$3) }
+    ;
 
 vectorAggregationExpr:
     // Aggregations with 1 argument.
@@ -176,14 +179,15 @@ vectorOp:
       ;
 
 rangeOp:
-      COUNT_OVER_TIME  { $$ = OpRangeTypeCount }
-    | RATE             { $$ = OpRangeTypeRate }
-    | SUM_OVER_TIME    { $$ = OpRangeTypeSum }
-    | AVG_OVER_TIME    { $$ = OpRangeTypeAvg }
-    | MAX_OVER_TIME    { $$ = OpRangeTypeMax }
-    | MIN_OVER_TIME    { $$ = OpRangeTypeMin }
-    | STDDEV_OVER_TIME { $$ = OpRangeTypeStddev }
-    | STDVAR_OVER_TIME { $$ = OpRangeTypeStdvar }
+      COUNT_OVER_TIME    { $$ = OpRangeTypeCount }
+    | RATE               { $$ = OpRangeTypeRate }
+    | SUM_OVER_TIME      { $$ = OpRangeTypeSum }
+    | AVG_OVER_TIME      { $$ = OpRangeTypeAvg }
+    | MAX_OVER_TIME      { $$ = OpRangeTypeMax }
+    | MIN_OVER_TIME      { $$ = OpRangeTypeMin }
+    | STDDEV_OVER_TIME   { $$ = OpRangeTypeStddev }
+    | STDVAR_OVER_TIME   { $$ = OpRangeTypeStdvar }
+    | QUANTILE_OVER_TIME { $$ = OpRangeTypeQuantile }
     ;
 
 

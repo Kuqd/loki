@@ -203,14 +203,15 @@ const (
 	OpTypeTopK    = "topk"
 
 	// range vector ops
-	OpRangeTypeCount  = "count_over_time"
-	OpRangeTypeRate   = "rate"
-	OpRangeTypeSum    = "sum_over_time"
-	OpRangeTypeAvg    = "avg_over_time"
-	OpRangeTypeMax    = "max_over_time"
-	OpRangeTypeMin    = "min_over_time"
-	OpRangeTypeStddev = "stddev_over_time"
-	OpRangeTypeStdvar = "stdvar_over_time"
+	OpRangeTypeCount    = "count_over_time"
+	OpRangeTypeRate     = "rate"
+	OpRangeTypeSum      = "sum_over_time"
+	OpRangeTypeAvg      = "avg_over_time"
+	OpRangeTypeMax      = "max_over_time"
+	OpRangeTypeMin      = "min_over_time"
+	OpRangeTypeStddev   = "stddev_over_time"
+	OpRangeTypeStdvar   = "stdvar_over_time"
+	OpRangeTypeQuantile = "quantile_over_time"
 
 	// binops - logical/set
 	OpTypeOr     = "or"
@@ -292,12 +293,31 @@ func (e *extractExpr) logQLExpr() {}
 type rangeAggregationExpr struct {
 	left      *logRange
 	operation string
+	param     float64
 }
 
-func newRangeAggregationExpr(left *logRange, operation string) SampleExpr {
+func newRangeAggregationExpr(left *logRange, operation string, param *string) SampleExpr {
+	var p float64
+	var err error
+
+	switch operation {
+	case OpRangeTypeQuantile:
+		if param == nil {
+			panic(newParseError(fmt.Sprintf("parameter required for operation %s", operation), 0, 0))
+		}
+		if p, err = strconv.ParseFloat(*param, 64); err != nil {
+			panic(newParseError(fmt.Sprintf("invalid parameter %s(%s,", operation, *param), 0, 0))
+		}
+	default:
+		if param != nil {
+			panic(newParseError(fmt.Sprintf("unsupported parameter for operation %s(%s,", operation, *param), 0, 0))
+		}
+	}
+
 	return &rangeAggregationExpr{
 		left:      left,
 		operation: operation,
+		param:     p,
 	}
 }
 

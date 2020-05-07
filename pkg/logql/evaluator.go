@@ -354,12 +354,9 @@ func rangeAggEvaluator(
 	vecIter := newRangeVectorIterator(seriesIter, expr.left.interval.Nanoseconds(), q.Step().Nanoseconds(),
 		q.Start().UnixNano(), q.End().UnixNano())
 
-	var fn RangeVectorAggregator
-	switch expr.operation {
-	case OpRangeTypeRate:
-		fn = rate(expr.left.interval)
-	case OpRangeTypeCount:
-		fn = count
+	fn, err := getAggregationOverTimeFn(expr)
+	if err != nil {
+		return nil, err
 	}
 
 	return newStepEvaluator(func() (bool, int64, promql.Vector) {

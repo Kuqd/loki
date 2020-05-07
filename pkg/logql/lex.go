@@ -29,14 +29,15 @@ var tokens = map[string]int{
 	"]":             CLOSE_BRACKET,
 
 	// range vector operations
-	OpRangeTypeRate:   RATE,
-	OpRangeTypeCount:  COUNT_OVER_TIME,
-	OpRangeTypeSum:    SUM_OVER_TIME,
-	OpRangeTypeAvg:    AVG_OVER_TIME,
-	OpRangeTypeMax:    MAX_OVER_TIME,
-	OpRangeTypeMin:    MIN_OVER_TIME,
-	OpRangeTypeStddev: STDDEV_OVER_TIME,
-	OpRangeTypeStdvar: STDVAR_OVER_TIME,
+	OpRangeTypeRate:     RATE,
+	OpRangeTypeCount:    COUNT_OVER_TIME,
+	OpRangeTypeSum:      SUM_OVER_TIME,
+	OpRangeTypeAvg:      AVG_OVER_TIME,
+	OpRangeTypeMax:      MAX_OVER_TIME,
+	OpRangeTypeMin:      MIN_OVER_TIME,
+	OpRangeTypeStddev:   STDDEV_OVER_TIME,
+	OpRangeTypeStdvar:   STDVAR_OVER_TIME,
+	OpRangeTypeQuantile: QUANTILE_OVER_TIME,
 
 	// vector operations
 	OpTypeSum:     SUM,

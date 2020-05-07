@@ -135,7 +135,7 @@ func Test_RangeVectorIterator(t *testing.T) {
 
 				i := 0
 				for it.Next() {
-					ts, v := it.At(count)
+					ts, v := it.At(countOverTime)
 					require.ElementsMatch(t, tt.expectedVectors[i], v)
 					require.Equal(t, tt.expectedTs[i].UnixNano()/1e+6, ts)
 					i++
