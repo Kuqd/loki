@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/cortexproject/cortex/pkg/chunk"
 	"github.com/cortexproject/cortex/pkg/querier/frontend"
 	"github.com/cortexproject/cortex/pkg/ring"
@@ -28,6 +30,7 @@ import (
 	"github.com/grafana/loki/pkg/querier"
 	"github.com/grafana/loki/pkg/querier/queryrange"
 	"github.com/grafana/loki/pkg/storage"
+	serverutil "github.com/grafana/loki/pkg/util/server"
 	"github.com/grafana/loki/pkg/util/validation"
 )
 
@@ -126,7 +129,7 @@ func New(cfg Config) (*Loki, error) {
 	}
 
 	loki.setupAuthMiddleware()
-	storage.RegisterCustomIndexClients(cfg.StorageConfig)
+	storage.RegisterCustomIndexClients(cfg.StorageConfig, prometheus.DefaultRegisterer)
 
 	serviceMap, err := loki.initModuleServices(cfg.Target)
 	if err != nil {
@@ -140,34 +143,30 @@ func New(cfg Config) (*Loki, error) {
 }
 
 func (t *Loki) setupAuthMiddleware() {
+	t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{serverutil.RecoveryGRPCUnaryInterceptor}
+	t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{serverutil.RecoveryGRPCStreamInterceptor}
 	if t.cfg.AuthEnabled {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			middleware.ServerUserHeaderInterceptor,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
-				switch info.FullMethod {
-				// Don't check auth header on TransferChunks, as we weren't originally
-				// sending it and this could cause transfers to fail on update.
-				//
-				// Also don't check auth /frontend.Frontend/Process, as this handles
-				// queries for multiple users.
-				case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
-					return handler(srv, ss)
-				default:
-					return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
-				}
-			},
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, middleware.ServerUserHeaderInterceptor)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, GRPCStreamAuthInterceptor)
 		t.httpAuthMiddleware = middleware.AuthenticateUser
 	} else {
-		t.cfg.Server.GRPCMiddleware = []grpc.UnaryServerInterceptor{
-			fakeGRPCAuthUniaryMiddleware,
-		}
-		t.cfg.Server.GRPCStreamMiddleware = []grpc.StreamServerInterceptor{
-			fakeGRPCAuthStreamMiddleware,
-		}
+		t.cfg.Server.GRPCMiddleware = append(t.cfg.Server.GRPCMiddleware, fakeGRPCAuthUnaryMiddleware)
+		t.cfg.Server.GRPCStreamMiddleware = append(t.cfg.Server.GRPCStreamMiddleware, fakeGRPCAuthStreamMiddleware)
 		t.httpAuthMiddleware = fakeHTTPAuthMiddleware
+	}
+}
+
+var GRPCStreamAuthInterceptor = func(srv interface{}, ss grpc.ServerStream, info *grpc.StreamServerInfo, handler grpc.StreamHandler) error {
+	switch info.FullMethod {
+	// Don't check auth header on TransferChunks, as we weren't originally
+	// sending it and this could cause transfers to fail on update.
+	//
+	// Also don't check auth /frontend.Frontend/Process, as this handles
+	// queries for multiple users.
+	case "/logproto.Ingester/TransferChunks", "/frontend.Frontend/Process":
+		return handler(srv, ss)
+	default:
+		return middleware.StreamServerUserHeaderInterceptor(srv, ss, info, handler)
 	}
 }
 
