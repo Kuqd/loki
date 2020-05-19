@@ -150,13 +150,8 @@ func Test_RangeVectorIterator(t *testing.T) {
 		t.Run(
 			fmt.Sprintf("logs[%s] - step: %s", time.Duration(tt.selRange), time.Duration(tt.step)),
 			func(t *testing.T) {
-<<<<<<< HEAD
 				it := newRangeVectorIterator(newfakeSeriesIterator(), tt.selRange,
 					tt.step, time.Unix(10, 0).UnixNano(), time.Unix(100, 0).UnixNano())
-=======
-				it := newRangeVectorIterator(newEntryIterator(), tt.selRange,
-					tt.step, tt.start.UnixNano(), tt.end.UnixNano())
->>>>>>> upstream/master
 
 				i := 0
 				for it.Next() {
