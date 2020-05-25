@@ -503,6 +503,10 @@ loki-debug-image:
 loki-push: loki-image-cross
 	$(call push-image,loki)
 
+# logcli
+logcli-image:
+	$(SUDO) docker build -t $(IMAGE_PREFIX)/logcli:$(IMAGE_TAG) -f cmd/logcli/Dockerfile .
+
 # loki-canary
 loki-canary-image:
 	$(SUDO) docker build -t $(IMAGE_PREFIX)/loki-canary:$(IMAGE_TAG) -f cmd/loki-canary/Dockerfile .
