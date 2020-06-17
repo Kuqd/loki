@@ -4,7 +4,7 @@
 .PHONY: docker-driver docker-driver-clean docker-driver-enable docker-driver-push
 .PHONY: fluent-bit-image, fluent-bit-push, fluent-bit-test
 .PHONY: fluentd-image, fluentd-push, fluentd-test
-.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image
+.PHONY: push-images push-latest save-images load-images promtail-image loki-image build-image cmd/docker-driver/docker-driver
 .PHONY: bigtable-backup, push-bigtable-backup
 .PHONY: benchmark-store, drone, check-mod
 
@@ -204,8 +204,8 @@ promtail-clean-assets:
 
 # Rule to generate promtail static assets file
 $(PROMTAIL_GENERATED_FILE): $(PROMTAIL_UI_FILES)
-	@echo ">> writing assets"
-	GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
+	# @echo ">> writing assets"
+	# GOFLAGS="$(MOD_FLAG)" GOOS=$(shell go env GOHOSTOS) go generate -x -v ./pkg/promtail/server/ui
 
 cmd/promtail/promtail: $(APP_GO_FILES) $(PROMTAIL_GENERATED_FILE) cmd/promtail/main.go
 	CGO_ENABLED=$(PROMTAIL_CGO) go build $(PROMTAIL_GO_FLAGS) -o $@ ./$(@D)
@@ -305,14 +305,14 @@ ifeq ($(BUILD_IN_CONTAINER),true)
 		-v $(shell pwd):/src/loki$(MOUNT_FLAGS) \
 		$(IMAGE_PREFIX)/loki-build-image:$(BUILD_IMAGE_VERSION) $@;
 else
-	case "$@" in	\
-		vendor*)			\
-			protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
-			;;					\
-		*)						\
-			protoc -I .:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
-			;;					\
-		esac
+	# case "$@" in	\
+	# 	vendor*)			\
+	# 		protoc -I ./vendor:./$(@D) --gogoslick_out=plugins=grpc:./vendor ./$(patsubst %.pb.go,%.proto,$@); \
+	# 		;;					\
+	# 	*)						\
+	# 		protoc -I .:./vendor:./$(@D) --gogoslick_out=Mgoogle/protobuf/timestamp.proto=github.com/gogo/protobuf/types,plugins=grpc,paths=source_relative:./ ./$(patsubst %.pb.go,%.proto,$@); \
+	# 		;;					\
+	# 	esac
 endif
 
 
