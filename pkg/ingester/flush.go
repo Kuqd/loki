@@ -293,7 +293,7 @@ func (i *Ingester) removeFlushedChunks(instance *instance, stream *stream) {
 		if stream.chunks[0].flushed.IsZero() || now.Sub(stream.chunks[0].flushed) < i.cfg.RetainPeriod {
 			break
 		}
-
+		stream.chunks[0].chunk.Release()
 		stream.chunks[0].chunk = nil // erase reference so the chunk can be garbage-collected
 		stream.chunks = stream.chunks[1:]
 	}

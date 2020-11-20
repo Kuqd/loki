@@ -1,7 +1,6 @@
 package chunkenc
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/binary"
@@ -9,7 +8,6 @@ import (
 	"hash"
 	"hash/crc32"
 	"io"
-	"sort"
 	"time"
 
 	"github.com/cespare/xxhash/v2"
@@ -60,7 +58,7 @@ type MemChunk struct {
 	targetSize int
 
 	// The finished blocks.
-	blocks []block
+	blocks []*block
 	// The compressed size of all the blocks
 	cutBlockSize int
 
@@ -70,86 +68,6 @@ type MemChunk struct {
 	// the chunk format default to v2
 	format   byte
 	encoding Encoding
-}
-
-type block struct {
-	// This is compressed bytes.
-	b          []byte
-	numEntries int
-
-	mint, maxt int64
-
-	offset           int // The offset of the block in the chunk.
-	uncompressedSize int // Total uncompressed size in bytes when the chunk is cut.
-}
-
-// This block holds the un-compressed entries. Once it has enough data, this is
-// emptied into a block with only compressed entries.
-type headBlock struct {
-	// This is the list of raw entries.
-	entries []entry
-	size    int // size of uncompressed bytes.
-
-	mint, maxt int64
-}
-
-func (hb *headBlock) isEmpty() bool {
-	return len(hb.entries) == 0
-}
-
-func (hb *headBlock) clear() {
-	if hb.entries != nil {
-		hb.entries = hb.entries[:0]
-	}
-	hb.size = 0
-	hb.mint = 0
-	hb.maxt = 0
-}
-
-func (hb *headBlock) append(ts int64, line string) error {
-	if !hb.isEmpty() && hb.maxt > ts {
-		return ErrOutOfOrder
-	}
-
-	hb.entries = append(hb.entries, entry{ts, line})
-	if hb.mint == 0 || hb.mint > ts {
-		hb.mint = ts
-	}
-	hb.maxt = ts
-	hb.size += len(line)
-
-	return nil
-}
-
-func (hb *headBlock) serialise(pool WriterPool) ([]byte, error) {
-	inBuf := serializeBytesBufferPool.Get().(*bytes.Buffer)
-	defer func() {
-		inBuf.Reset()
-		serializeBytesBufferPool.Put(inBuf)
-	}()
-	outBuf := &bytes.Buffer{}
-
-	encBuf := make([]byte, binary.MaxVarintLen64)
-	compressedWriter := pool.GetWriter(outBuf)
-	defer pool.PutWriter(compressedWriter)
-	for _, logEntry := range hb.entries {
-		n := binary.PutVarint(encBuf, logEntry.t)
-		inBuf.Write(encBuf[:n])
-
-		n = binary.PutUvarint(encBuf, uint64(len(logEntry.s)))
-		inBuf.Write(encBuf[:n])
-
-		inBuf.WriteString(logEntry.s)
-	}
-
-	if _, err := compressedWriter.Write(inBuf.Bytes()); err != nil {
-		return nil, errors.Wrap(err, "appending entry")
-	}
-	if err := compressedWriter.Close(); err != nil {
-		return nil, errors.Wrap(err, "flushing pending compress buffer")
-	}
-
-	return outBuf.Bytes(), nil
 }
 
 type entry struct {
@@ -162,9 +80,11 @@ func NewMemChunk(enc Encoding, blockSize, targetSize int) *MemChunk {
 	c := &MemChunk{
 		blockSize:  blockSize,  // The blockSize in bytes.
 		targetSize: targetSize, // Desired chunk size in compressed bytes
-		blocks:     []block{},
+		blocks:     []*block{},
 
-		head:   &headBlock{},
+		head: &headBlock{
+			pool: getWriterPool(enc),
+		},
 		format: chunkFormatV3,
 
 		encoding: enc,
@@ -204,7 +124,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 	default:
 		return nil, errors.Errorf("invalid version %d", version)
 	}
-
+	bc.head.pool = getWriterPool(bc.encoding)
 	metasOffset := binary.BigEndian.Uint64(b[len(b)-8:])
 	mb := b[metasOffset : len(b)-(8+4)] // storing the metasOffset + checksum of meta
 	db = decbuf{b: mb}
@@ -216,10 +136,10 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 
 	// Read the number of blocks.
 	num := db.uvarint()
-	bc.blocks = make([]block, 0, num)
+	bc.blocks = make([]*block, 0, num)
 
 	for i := 0; i < num; i++ {
-		var blk block
+		blk := &block{}
 		// Read #entries.
 		blk.numEntries = db.uvarint()
 
@@ -233,11 +153,11 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 			blk.uncompressedSize = db.uvarint()
 		}
 		l := db.uvarint()
-		blk.b = b[blk.offset : blk.offset+l]
+		blk.buff = bytes.NewBuffer(b[blk.offset : blk.offset+l])
 
 		// Verify checksums.
 		expCRC := binary.BigEndian.Uint32(b[blk.offset+l:])
-		if expCRC != crc32.Checksum(blk.b, castagnoliTable) {
+		if expCRC != crc32.Checksum(blk.buff.Bytes(), castagnoliTable) {
 			level.Error(util.Logger).Log("msg", "Checksum does not match for a block in chunk, this block will be skipped", "err", ErrInvalidChecksum)
 			continue
 		}
@@ -245,7 +165,7 @@ func NewByteChunk(b []byte, blockSize, targetSize int) (*MemChunk, error) {
 		bc.blocks = append(bc.blocks, blk)
 
 		// Update the counter used to track the size of cut blocks.
-		bc.cutBlockSize += len(blk.b)
+		bc.cutBlockSize += blk.buff.Len()
 
 		if db.err() != nil {
 			return nil, errors.Wrap(db.err(), "decoding block meta")
@@ -262,6 +182,12 @@ func (c *MemChunk) BytesWith(b []byte) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+func (c *MemChunk) Release() {
+	for _, b := range c.blocks {
+		b.close()
+	}
 }
 
 // Bytes implements Chunk.
@@ -302,7 +228,7 @@ func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 		c.blocks[i].offset = int(offset)
 
 		eb.reset()
-		eb.putBytes(b.b)
+		eb.putBytes(b.buff.Bytes())
 		eb.putHash(crc32Hash)
 
 		n, err := w.Write(eb.get())
@@ -326,7 +252,7 @@ func (c *MemChunk) WriteTo(w io.Writer) (int64, error) {
 		if c.format == chunkFormatV3 {
 			eb.putUvarint(b.uncompressedSize)
 		}
-		eb.putUvarint(len(b.b))
+		eb.putUvarint(len(b.buff.Bytes()))
 	}
 	eb.putHash(crc32Hash)
 
@@ -452,21 +378,18 @@ func (c *MemChunk) cut() error {
 	if c.head.isEmpty() {
 		return nil
 	}
-
-	b, err := c.head.serialise(getWriterPool(c.encoding))
+	b := getBlock()
+	_, err := c.head.WriteTo(b.buff)
 	if err != nil {
 		return err
 	}
+	b.numEntries = len(c.head.entries)
+	b.mint = c.head.mint
+	b.maxt = c.head.maxt
+	b.uncompressedSize = c.head.size
+	c.blocks = append(c.blocks, b)
 
-	c.blocks = append(c.blocks, block{
-		b:                b,
-		numEntries:       len(c.head.entries),
-		mint:             c.head.mint,
-		maxt:             c.head.maxt,
-		uncompressedSize: c.head.size,
-	})
-
-	c.cutBlockSize += len(b)
+	c.cutBlockSize += len(b.buff.Bytes())
 
 	c.head.clear()
 	return nil
@@ -571,153 +494,12 @@ func (c *MemChunk) Blocks(mintT, maxtT time.Time) []Block {
 	return blocks
 }
 
-// encBlock is an internal wrapper for a block, mainly to avoid binding an encoding in a block itself.
-// This may seem roundabout, but the encoding is already a field on the parent MemChunk type. encBlock
-// then allows us to bind a decoding context to a block when requested, but otherwise helps reduce the
-// chances of chunk<>block encoding drift in the codebase as the latter is parameterized by the former.
-type encBlock struct {
-	enc Encoding
-	block
-}
-
-func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator {
-	if len(b.b) == 0 {
-		return iter.NoopIterator
-	}
-	return newEntryIterator(ctx, getReaderPool(b.enc), b.b, pipeline)
-}
-
-func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator {
-	if len(b.b) == 0 {
-		return iter.NoopIterator
-	}
-	return newSampleIterator(ctx, getReaderPool(b.enc), b.b, extractor)
-}
-
-func (b block) Offset() int {
-	return b.offset
-}
-
-func (b block) Entries() int {
-	return b.numEntries
-}
-func (b block) MinTime() int64 {
-	return b.mint
-}
-func (b block) MaxTime() int64 {
-	return b.maxt
-}
-
-func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction, mint, maxt int64, pipeline log.StreamPipeline) iter.EntryIterator {
-	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
-	}
-
+func newBufferedIterator(ctx context.Context, pool ReaderPool, b *block) *bufferedIterator {
 	chunkStats := stats.GetChunkData(ctx)
-
-	// We are doing a copy everytime, this is because b.entries could change completely,
-	// the alternate would be that we allocate a new b.entries everytime we cut a block,
-	// but the tradeoff is that queries to near-realtime data would be much lower than
-	// cutting of blocks.
-	chunkStats.HeadChunkLines += int64(len(hb.entries))
-	streams := map[uint64]*logproto.Stream{}
-	for _, e := range hb.entries {
-		chunkStats.HeadChunkBytes += int64(len(e.s))
-		line := []byte(e.s)
-		newLine, parsedLbs, ok := pipeline.Process(line)
-		if !ok {
-			continue
-		}
-		var stream *logproto.Stream
-		lhash := parsedLbs.Hash()
-		if stream, ok = streams[lhash]; !ok {
-			stream = &logproto.Stream{
-				Labels: parsedLbs.String(),
-			}
-			streams[lhash] = stream
-		}
-		stream.Entries = append(stream.Entries, logproto.Entry{
-			Timestamp: time.Unix(0, e.t),
-			Line:      string(newLine),
-		})
-
-	}
-
-	if len(streams) == 0 {
-		return iter.NoopIterator
-	}
-	streamsResult := make([]logproto.Stream, 0, len(streams))
-	for _, stream := range streams {
-		streamsResult = append(streamsResult, *stream)
-	}
-	return iter.NewStreamsIterator(ctx, streamsResult, direction)
-}
-
-func (hb *headBlock) sampleIterator(ctx context.Context, mint, maxt int64, extractor log.StreamSampleExtractor) iter.SampleIterator {
-	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
-		return iter.NoopIterator
-	}
-	chunkStats := stats.GetChunkData(ctx)
-	chunkStats.HeadChunkLines += int64(len(hb.entries))
-	series := map[uint64]*logproto.Series{}
-	for _, e := range hb.entries {
-		chunkStats.HeadChunkBytes += int64(len(e.s))
-		line := []byte(e.s)
-		value, parsedLabels, ok := extractor.Process(line)
-		if !ok {
-			continue
-		}
-		var found bool
-		var s *logproto.Series
-		lhash := parsedLabels.Hash()
-		if s, found = series[lhash]; !found {
-			s = &logproto.Series{
-				Labels: parsedLabels.String(),
-			}
-			series[lhash] = s
-		}
-		s.Samples = append(s.Samples, logproto.Sample{
-			Timestamp: e.t,
-			Value:     value,
-			Hash:      xxhash.Sum64([]byte(e.s)),
-		})
-	}
-
-	if len(series) == 0 {
-		return iter.NoopIterator
-	}
-	seriesRes := make([]logproto.Series, 0, len(series))
-	for _, s := range series {
-		sort.Sort(s)
-		seriesRes = append(seriesRes, *s)
-	}
-	return iter.NewMultiSeriesIterator(ctx, seriesRes)
-}
-
-type bufferedIterator struct {
-	origBytes []byte
-	stats     *stats.ChunkData
-
-	bufReader *bufio.Reader
-	reader    io.Reader
-	pool      ReaderPool
-
-	err error
-
-	decBuf   []byte // The buffer for decoding the lengths.
-	buf      []byte // The buffer for a single entry.
-	currLine []byte // the current line, this is the same as the buffer but sliced the the line size.
-	currTs   int64
-
-	closed bool
-}
-
-func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *bufferedIterator {
-	chunkStats := stats.GetChunkData(ctx)
-	chunkStats.CompressedBytes += int64(len(b))
+	chunkStats.CompressedBytes += int64(len(b.buff.Bytes()))
 	return &bufferedIterator{
 		stats:     chunkStats,
-		origBytes: b,
+		block:     b,
 		reader:    nil, // will be initialized later
 		bufReader: nil, // will be initialized later
 		pool:      pool,
@@ -728,7 +510,7 @@ func newBufferedIterator(ctx context.Context, pool ReaderPool, b []byte) *buffer
 func (si *bufferedIterator) Next() bool {
 	if !si.closed && si.reader == nil {
 		// initialize reader now, hopefully reusing one of the previous readers
-		si.reader = si.pool.GetReader(bytes.NewBuffer(si.origBytes))
+		si.reader = si.pool.GetReader(bytes.NewBuffer(si.block.buff.Bytes()))
 		si.bufReader = BufReaderPool.Get(si.reader)
 	}
 
@@ -822,11 +604,11 @@ func (si *bufferedIterator) close() {
 		BytesBufferPool.Put(si.buf)
 		si.buf = nil
 	}
-	si.origBytes = nil
+	si.block.close()
 	si.decBuf = nil
 }
 
-func newEntryIterator(ctx context.Context, pool ReaderPool, b []byte, pipeline log.StreamPipeline) iter.EntryIterator {
+func newEntryIterator(ctx context.Context, pool ReaderPool, b *block, pipeline log.StreamPipeline) iter.EntryIterator {
 	return &entryBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b),
 		pipeline:         pipeline,
@@ -861,7 +643,7 @@ func (e *entryBufferedIterator) Next() bool {
 	return false
 }
 
-func newSampleIterator(ctx context.Context, pool ReaderPool, b []byte, extractor log.StreamSampleExtractor) iter.SampleIterator {
+func newSampleIterator(ctx context.Context, pool ReaderPool, b *block, extractor log.StreamSampleExtractor) iter.SampleIterator {
 	it := &sampleBufferedIterator{
 		bufferedIterator: newBufferedIterator(ctx, pool, b),
 		extractor:        extractor,
