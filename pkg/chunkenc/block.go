@@ -162,6 +162,8 @@ func (b *block) Offset() int {
 	return b.offset
 }
 
+//todo close on block should release only if close and last.
+// close on chunk should release only if no block leaked.
 func (b *block) close() {
 	if !b.reuse {
 		return
