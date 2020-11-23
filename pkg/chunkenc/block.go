@@ -27,25 +27,24 @@ var blockPool = sync.Pool{
 	},
 }
 
-func getBlock() *block {
-	b := blockPool.Get().(*block)
-	b.buff.Reset()
-	b.maxt, b.mint, b.numEntries, b.offset, b.inUsed = 0, 0, 0, 0, 0
-	b.isClose = false
+func getBlockBuffer() *bytes.Buffer {
+	b := blockPool.Get().(*bytes.Buffer)
+	b.Reset()
 	return b
 }
 
-func putBlock(b *block) {
+func putBlockBuffer(b *block) {
 	if b.reuse {
-		blockPool.Put(b)
+		blockPool.Put(b.buff)
 	}
 }
 
 type block struct {
-	reuse   bool
-	isClose bool
-	mtx     sync.Mutex
-	inUsed  int
+	reuse    bool
+	isClose  bool
+	released bool
+	mtx      sync.Mutex
+	inUsed   int
 
 	buff       *bytes.Buffer
 	numEntries int
@@ -140,10 +139,9 @@ func (b encBlock) Iterator(ctx context.Context, pipeline log.StreamPipeline) ite
 	if len(b.buff.Bytes()) == 0 {
 		return iter.NoopIterator
 	}
-	if b.block.isClosed() {
+	if !b.block.use() {
 		return iter.NoopIterator
 	}
-	b.block.use()
 	return newEntryIterator(ctx, getReaderPool(b.enc), b.block, pipeline)
 }
 
@@ -151,10 +149,9 @@ func (b encBlock) SampleIterator(ctx context.Context, extractor log.StreamSample
 	if len(b.buff.Bytes()) == 0 {
 		return iter.NoopIterator
 	}
-	if b.block.isClosed() {
+	if !b.block.use() {
 		return iter.NoopIterator
 	}
-	b.block.use()
 	return newSampleIterator(ctx, getReaderPool(b.enc), b.block, extractor)
 }
 
@@ -173,37 +170,40 @@ func (b *block) close() {
 	if b.isClose {
 		return
 	}
-	if b.inUsed == 0 {
-		b.isClose = true
-		putBlock(b)
+	b.isClose = true
+	if b.inUsed == 0 && !b.released {
+		b.released = true
+		putBlockBuffer(b)
 		return
 	}
-	b.inUsed--
-	if b.inUsed == 0 {
-		b.isClose = true
-		putBlock(b)
-	}
+
 }
 
-func (b *block) use() {
+func (b *block) use() bool {
 	if !b.reuse {
-		return
+		return true
 	}
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
-	if b.isClose {
-		return
-	}
-	b.inUsed++
-}
-
-func (b *block) isClosed() bool {
-	if !b.reuse {
+	if b.isClose || b.released {
 		return false
 	}
+	b.inUsed++
+	return true
+}
+
+func (b *block) release() {
+	if !b.reuse {
+		return
+	}
 	b.mtx.Lock()
 	defer b.mtx.Unlock()
-	return b.isClose
+
+	b.inUsed--
+	if b.inUsed == 0 && b.isClose && !b.released {
+		b.released = true
+		putBlockBuffer(b)
+	}
 }
 
 func (b *block) Entries() int {

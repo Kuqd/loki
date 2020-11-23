@@ -378,7 +378,10 @@ func (c *MemChunk) cut() error {
 	if c.head.isEmpty() {
 		return nil
 	}
-	b := getBlock()
+	b := &block{
+		reuse: true,
+		buff:  getBlockBuffer(),
+	}
 	_, err := c.head.WriteTo(b.buff)
 	if err != nil {
 		return err
@@ -604,7 +607,7 @@ func (si *bufferedIterator) close() {
 		BytesBufferPool.Put(si.buf)
 		si.buf = nil
 	}
-	si.block.close()
+	si.block.release()
 	si.decBuf = nil
 }
 
