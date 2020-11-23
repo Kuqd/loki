@@ -224,6 +224,8 @@ func (c *noopChunk) BytesWith(_ []byte) ([]byte, error) {
 func (c *noopChunk) Release()                           {}
 func (c *noopChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
 
+func (c *noopChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
+
 func (c *noopChunk) Blocks(_ time.Time, _ time.Time) []chunkenc.Block {
 	return nil
 }

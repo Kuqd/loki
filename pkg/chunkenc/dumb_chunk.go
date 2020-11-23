@@ -110,6 +110,8 @@ func (c *dumbChunk) BytesWith(_ []byte) ([]byte, error) {
 func (c *dumbChunk) Release()                           {}
 func (c *dumbChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
 
+func (c *dumbChunk) WriteTo(w io.Writer) (int64, error) { return 0, nil }
+
 func (c *dumbChunk) Blocks(_ time.Time, _ time.Time) []Block {
 	return nil
 }
