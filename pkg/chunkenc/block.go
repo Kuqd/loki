@@ -20,10 +20,7 @@ import (
 
 var blockPool = sync.Pool{
 	New: func() interface{} {
-		return &block{
-			reuse: true,
-			buff:  bytes.NewBuffer(nil),
-		}
+		return bytes.NewBuffer(nil)
 	},
 }
 
