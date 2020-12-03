@@ -27,7 +27,6 @@ import (
 	"github.com/prometheus/common/version"
 
 	"github.com/grafana/loki/pkg/helpers"
-	"github.com/grafana/loki/pkg/logproto"
 )
 
 const (
@@ -110,8 +109,8 @@ func init() {
 // Client pushes entries to Loki and can be stopped
 type Client interface {
 	api.EntryHandler
-	// Stop goroutine sending batch of entries.
-	Stop()
+	// Stop goroutine sending batch of entries without retries.
+	StopNow()
 }
 
 // Client for pushing logs in snappy-compressed protos over HTTP.
@@ -119,18 +118,16 @@ type client struct {
 	logger  log.Logger
 	cfg     Config
 	client  *http.Client
-	quit    chan struct{}
-	once    sync.Once
-	entries chan entry
-	wg      sync.WaitGroup
+	entries chan api.Entry
+
+	once sync.Once
+	wg   sync.WaitGroup
 
 	externalLabels model.LabelSet
-}
 
-type entry struct {
-	tenantID string
-	labels   model.LabelSet
-	logproto.Entry
+	// ctx is used in any upstream calls from the `client`.
+	ctx    context.Context
+	cancel context.CancelFunc
 }
 
 // New makes a new Client.
@@ -139,13 +136,16 @@ func New(cfg Config, logger log.Logger) (Client, error) {
 		return nil, errors.New("client needs target URL")
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	c := &client{
 		logger:  log.With(logger, "component", "client", "host", cfg.URL.Host),
 		cfg:     cfg,
-		quit:    make(chan struct{}),
-		entries: make(chan entry),
+		entries: make(chan api.Entry),
 
 		externalLabels: cfg.ExternalLabels.LabelSet,
+		ctx:            ctx,
+		cancel:         cancel,
 	}
 
 	err := cfg.Client.Validate()
@@ -199,24 +199,25 @@ func (c *client) run() {
 
 	for {
 		select {
-		case <-c.quit:
-			return
-
-		case e := <-c.entries:
-			batch, ok := batches[e.tenantID]
+		case e, ok := <-c.entries:
+			if !ok {
+				return
+			}
+			e, tenantID := c.processEntry(e)
+			batch, ok := batches[tenantID]
 
 			// If the batch doesn't exist yet, we create a new one with the entry
 			if !ok {
-				batches[e.tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(e)
 				break
 			}
 
 			// If adding the entry to the batch will increase the size over the max
 			// size allowed, we do send the current batch and then create a new one
 			if batch.sizeBytesAfter(e) > c.cfg.BatchSize {
-				c.sendBatch(e.tenantID, batch)
+				c.sendBatch(tenantID, batch)
 
-				batches[e.tenantID] = newBatch(e)
+				batches[tenantID] = newBatch(e)
 				break
 			}
 
@@ -237,6 +238,10 @@ func (c *client) run() {
 	}
 }
 
+func (c *client) Chan() chan<- api.Entry {
+	return c.entries
+}
+
 func (c *client) sendBatch(tenantID string, batch *batch) {
 	buf, entriesCount, err := batch.encode()
 	if err != nil {
@@ -246,12 +251,13 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 	bufBytes := float64(len(buf))
 	encodedBytes.WithLabelValues(c.cfg.URL.Host).Add(bufBytes)
 
-	ctx := context.Background()
-	backoff := util.NewBackoff(ctx, c.cfg.BackoffConfig)
+	backoff := util.NewBackoff(c.ctx, c.cfg.BackoffConfig)
 	var status int
-	for backoff.Ongoing() {
+	for {
 		start := time.Now()
-		status, err = c.send(ctx, tenantID, buf)
+		// send uses `timeout` internally, so `context.Background` is good enough.
+		status, err = c.send(context.Background(), tenantID, buf)
+
 		requestDuration.WithLabelValues(strconv.Itoa(status), c.cfg.URL.Host).Observe(time.Since(start).Seconds())
 
 		if err == nil {
@@ -288,6 +294,11 @@ func (c *client) sendBatch(tenantID string, batch *batch) {
 		level.Warn(c.logger).Log("msg", "error sending batch, will retry", "status", status, "error", err)
 		batchRetries.WithLabelValues(c.cfg.URL.Host).Inc()
 		backoff.Wait()
+
+		// Make sure it sends at least once before checking for retry.
+		if !backoff.Ongoing() {
+			break
+		}
 	}
 
 	if err != nil {
@@ -349,30 +360,24 @@ func (c *client) getTenantID(labels model.LabelSet) string {
 
 // Stop the client.
 func (c *client) Stop() {
-	c.once.Do(func() { close(c.quit) })
+	c.once.Do(func() { close(c.entries) })
 	c.wg.Wait()
 }
 
-// Handle implement EntryHandler; adds a new line to the next batch; send is async.
-func (c *client) Handle(ls model.LabelSet, t time.Time, s string) error {
+// StopNow stops the client without retries
+func (c *client) StopNow() {
+	// cancel will stop retrying http requests.
+	c.cancel()
+	c.Stop()
+}
+
+func (c *client) processEntry(e api.Entry) (api.Entry, string) {
 	if len(c.externalLabels) > 0 {
-		ls = c.externalLabels.Merge(ls)
+		e.Labels = c.externalLabels.Merge(e.Labels)
 	}
-
-	// Get the tenant  ID in case it has been overridden while processing
-	// the pipeline stages, then remove the special label
-	tenantID := c.getTenantID(ls)
-	if _, ok := ls[ReservedLabelTenantID]; ok {
-		// Clone the label set to not manipulate the input one
-		ls = ls.Clone()
-		delete(ls, ReservedLabelTenantID)
-	}
-
-	c.entries <- entry{tenantID, ls, logproto.Entry{
-		Timestamp: t,
-		Line:      s,
-	}}
-	return nil
+	tenantID := c.getTenantID(e.Labels)
+	delete(e.Labels, ReservedLabelTenantID)
+	return e, tenantID
 }
 
 func (c *client) UnregisterLatencyMetric(labels model.LabelSet) {

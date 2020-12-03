@@ -265,6 +265,7 @@ func TestRoundtripV3(t *testing.T) {
 	for _, enc := range testEncoding {
 		t.Run(enc.String(), func(t *testing.T) {
 			c := NewMemChunk(enc, testBlockSize, testTargetSize)
+			c.format = chunkFormatV3
 			_ = fillChunk(c)
 
 			b, err := c.Bytes()
@@ -294,6 +295,7 @@ func TestSerialization(t *testing.T) {
 			for i := 0; i < numSamples; i++ {
 				require.NoError(t, chk.Append(logprotoEntry(int64(i), strconv.Itoa(i))))
 			}
+			require.NoError(t, chk.Close())
 
 			byt, err := chk.Bytes()
 			require.NoError(t, err)
@@ -717,6 +719,32 @@ func BenchmarkHeadBlockIterator(b *testing.B) {
 	}
 }
 
+func BenchmarkHeadBlockSampleIterator(b *testing.B) {
+
+	for _, j := range []int{100000, 50000, 15000, 10000} {
+		b.Run(fmt.Sprintf("Size %d", j), func(b *testing.B) {
+
+			h := headBlock{}
+
+			for i := 0; i < j; i++ {
+				if err := h.append(int64(i), "this is the append string"); err != nil {
+					b.Fatal(err)
+				}
+			}
+
+			b.ResetTimer()
+
+			for n := 0; n < b.N; n++ {
+				iter := h.sampleIterator(context.Background(), 0, math.MaxInt64, countExtractor)
+
+				for iter.Next() {
+					_ = iter.Sample()
+				}
+			}
+		})
+	}
+}
+
 func TestMemChunk_IteratorBounds(t *testing.T) {
 
 	var createChunk = func() *MemChunk {
@@ -812,6 +840,76 @@ func TestBytesWith(t *testing.T) {
 	require.Nil(t, err)
 
 	require.Equal(t, exp, out)
+}
+
+func TestHeadBlockCheckpointing(t *testing.T) {
+	c := NewMemChunk(EncSnappy, 256*1024, 1500*1024)
+
+	// add a few entries
+	for i := 0; i < 5; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// ensure blocks are not cut
+	require.Equal(t, 0, len(c.blocks))
+
+	b, err := c.head.CheckpointBytes(c.format)
+	require.Nil(t, err)
+
+	hb := &headBlock{}
+	require.Nil(t, hb.FromCheckpoint(b))
+	require.Equal(t, c.head, hb)
+}
+
+func TestCheckpointEncoding(t *testing.T) {
+	blockSize, targetSize := 256*1024, 1500*1024
+	c := NewMemChunk(EncSnappy, blockSize, targetSize)
+
+	// add a few entries
+	for i := 0; i < 5; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// cut it
+	require.Nil(t, c.cut())
+
+	// add a few more to head
+	for i := 5; i < 10; i++ {
+		entry := &logproto.Entry{
+			Timestamp: time.Unix(int64(i), 0),
+			Line:      fmt.Sprintf("hi there - %d", i),
+		}
+		require.Equal(t, true, c.SpaceFor(entry))
+		require.Nil(t, c.Append(entry))
+	}
+
+	// ensure new blocks are not cut
+	require.Equal(t, 1, len(c.blocks))
+
+	chk, head, err := c.SerializeForCheckpoint(nil)
+	require.Nil(t, err)
+
+	cpy, err := MemchunkFromCheckpoint(chk, head, blockSize, targetSize)
+	require.Nil(t, err)
+
+	// TODO(owen-d): remove once v3+ is the default chunk version
+	// because that is when we started serializing uncompressed size.
+	// Until then, nil them out in order to ease equality testing.
+	for i := range c.blocks {
+		c.blocks[i].uncompressedSize = 0
+	}
+
+	require.Equal(t, c, cpy)
 }
 
 var streams = []logproto.Stream{}
