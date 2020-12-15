@@ -9,6 +9,7 @@ import (
 
 	"github.com/grafana/loki/pkg/logql/log/logfmt"
 
+	rure "github.com/BurntSushi/rure-go"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/prometheus/common/model"
 )
@@ -194,7 +195,9 @@ func addLabel(lbs *LabelsBuilder, key, value string) {
 }
 
 type RegexpParser struct {
-	regex     *regexp.Regexp
+	regex     *rure.Regex
+	caps      *rure.Captures
+	names     []string
 	nameIndex map[int]string
 }
 
@@ -225,9 +228,15 @@ func NewRegexpParser(re string) (*RegexpParser, error) {
 	if len(nameIndex) == 0 {
 		return nil, errMissingCapture
 	}
+	fastRe, err := rure.Compile(re)
+	if err != nil {
+		return nil, err
+	}
 	return &RegexpParser{
-		regex:     regex,
+		regex:     fastRe,
 		nameIndex: nameIndex,
+		caps:      fastRe.NewCaptures(),
+		names:     fastRe.CaptureNames(),
 	}, nil
 }
 
@@ -240,11 +249,36 @@ func mustNewRegexParser(re string) *RegexpParser {
 }
 
 func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	for i, value := range r.regex.FindSubmatch(line) {
-		if name, ok := r.nameIndex[i]; ok {
-			addLabel(lbs, name, string(value))
+	// if !r.regex.CapturesBytes(r.caps, line) {
+	// 	return line, true
+	// }
+	// for i, m := range r.names[1:] {
+	// 	if m == "" {
+	// 		continue
+	// 	}
+	// 	start, end, ok := r.caps.Group(i + 1)
+	// 	if ok {
+	// 		addLabel(lbs, m, string(line[start:end]))
+	// 	}
+	// }
+
+	it := r.regex.IterBytes(line)
+	index := 1
+	for it.Next(r.caps) {
+		if r.names[index] == "" {
+			index++
+			continue
 		}
+		start, end := it.Match()
+		addLabel(lbs, r.names[index], string(line[start:end]))
 	}
+
+	// for i, value := range r.regex.FindSubmatch(line) {
+	// 	if name, ok := r.nameIndex[i]; ok {
+	// addLabel(lbs, m, string(line[start:end]))
+
+	// 	}
+	// }
 	return line, true
 }
 

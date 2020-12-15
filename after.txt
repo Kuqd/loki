@@ -1,0 +1,5 @@
+goos: darwin
+goarch: amd64
+pkg: github.com/grafana/loki/pkg/logql/log
+Benchmark_Parser/regex_full_access_log/no_labels_hints-16         	signal: interrupt
+FAIL	github.com/grafana/loki/pkg/logql/log	0.507s

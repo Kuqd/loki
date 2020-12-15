@@ -1,0 +1,14 @@
+❯ go test -benchmem -run=^$ -mod=vendor  ./pkg/logql/log  -bench=Benchmark_Parser
+goos: darwin
+goarch: amd64
+pkg: github.com/grafana/loki/pkg/logql/log
+Benchmark_Parser/json/no_labels_hints-16         	  349172	      3301 ns/op	     912 B/op	      56 allocs/op
+Benchmark_Parser/json/labels_hints-16            	  617089	      2013 ns/op	     368 B/op	      27 allocs/op
+Benchmark_Parser/logfmt/no_labels_hints-16       	  697533	      1661 ns/op	     464 B/op	      31 allocs/op
+Benchmark_Parser/logfmt/labels_hints-16          	 1528005	       772 ns/op	     144 B/op	       5 allocs/op
+Benchmark_Parser/regex_greedy/no_labels_hints-16 	  318738	      3830 ns/op	     192 B/op	       2 allocs/op
+Benchmark_Parser/regex_greedy/labels_hints-16    	  309996	      3846 ns/op	     193 B/op	       2 allocs/op
+Benchmark_Parser/regex_status_digits/no_labels_hints-16         	 3814594	       315 ns/op	      51 B/op	       2 allocs/op
+Benchmark_Parser/regex_status_digits/labels_hints-16            	 3854199	       316 ns/op	      51 B/op	       2 allocs/op
+PASS
+ok  	github.com/grafana/loki/pkg/logql/log	11.167s
