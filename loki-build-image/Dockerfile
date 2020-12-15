@@ -64,4 +64,11 @@ ENV GOCACHE=/go/cache
 
 COPY build.sh /
 RUN chmod +x /build.sh
+
+# Get Rust
+RUN curl https://sh.rustup.rs -sSf | bash -s -- -y
+
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+
 ENTRYPOINT ["/build.sh"]

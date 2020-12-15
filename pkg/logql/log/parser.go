@@ -249,36 +249,19 @@ func mustNewRegexParser(re string) *RegexpParser {
 }
 
 func (r *RegexpParser) Process(line []byte, lbs *LabelsBuilder) ([]byte, bool) {
-	// if !r.regex.CapturesBytes(r.caps, line) {
-	// 	return line, true
-	// }
-	// for i, m := range r.names[1:] {
-	// 	if m == "" {
-	// 		continue
-	// 	}
-	// 	start, end, ok := r.caps.Group(i + 1)
-	// 	if ok {
-	// 		addLabel(lbs, m, string(line[start:end]))
-	// 	}
-	// }
-
-	it := r.regex.IterBytes(line)
-	index := 1
-	for it.Next(r.caps) {
-		if r.names[index] == "" {
-			index++
+	if !r.regex.CapturesBytes(r.caps, line) {
+		return line, true
+	}
+	for i, m := range r.names[1:] {
+		if m == "" {
 			continue
 		}
-		start, end := it.Match()
-		addLabel(lbs, r.names[index], string(line[start:end]))
+		start, end, ok := r.caps.Group(i + 1)
+		if ok {
+			addLabel(lbs, m, string(line[start:end]))
+		}
 	}
 
-	// for i, value := range r.regex.FindSubmatch(line) {
-	// 	if name, ok := r.nameIndex[i]; ok {
-	// addLabel(lbs, m, string(line[start:end]))
-
-	// 	}
-	// }
 	return line, true
 }
 

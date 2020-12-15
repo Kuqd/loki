@@ -115,7 +115,7 @@ func Benchmark_Parser(b *testing.B) {
 		{"regex greedy", nginxline, mustNewRegexParser(`GET (?P<path>.*?)/\?`), []string{"path"}},
 		{"regex status digits", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{3}) `), nil},
 		{"regex no match", nginxline, mustNewRegexParser(`HTTP/1.1" (?P<statuscode>\d{4}) `), nil},
-		{"regex full access log", nginxline, mustNewRegexParser("(?P<ip>.*?) (?P<remote_log_name>.*?) (?P<userid>.*?) \\[(?P<date>.*?) (?P<timezone>.*?)\\] \\\"(?P<request_method>.*?) (?P<path>.*?)(?P<request_version> HTTP/.*)?\\\" (?P<status>.*?) (?P<length>.*?) \\\"(?P<referrer>.*?)\\\" \\\"(?P<user_agent>.*?)\\\""), nil},
+		// {"regex full access log", nginxline, mustNewRegexParser("(?P<ip>.*?) (?P<remote_log_name>.*?) (?P<userid>.*?) \\[(?P<date>.*?) (?P<timezone>.*?)\\] \\\"(?P<request_method>.*?) (?P<path>.*?)(?P<request_version> HTTP/.*)?\\\" (?P<status>.*?) (?P<length>.*?) \\\"(?P<referrer>.*?)\\\" \\\"(?P<user_agent>.*?)\\\""), nil},
 	} {
 		b.Run(tt.name, func(b *testing.B) {
 			line := []byte(tt.line)
