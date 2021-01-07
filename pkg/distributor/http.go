@@ -1,12 +1,16 @@
 package distributor
 
 import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
 	"math"
 	"net/http"
 
+	"github.com/golang/snappy"
+	"github.com/prometheus/prometheus/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
-
-	"github.com/cortexproject/cortex/pkg/util"
 
 	"github.com/grafana/loki/pkg/loghttp"
 	"github.com/grafana/loki/pkg/logproto"
@@ -59,9 +63,58 @@ func ParseRequest(r *http.Request) (*logproto.PushRequest, error) {
 		}
 
 	default:
-		if err := util.ParseProtoReader(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req, util.RawSnappy); err != nil {
+		if err := ParseProtoRequest(r.Context(), r.Body, int(r.ContentLength), math.MaxInt32, &req); err != nil {
 			return nil, err
 		}
 	}
 	return &req, nil
+}
+
+var BytesBufferPool = pool.New(1*1024, 2*1024*1024, 2, func(size int) interface{} { return make([]byte, 0, size) })
+
+// ParseProtoRequest parses a compressed proto pushRequest from an io.Reader.
+func ParseProtoRequest(ctx context.Context, reader io.Reader, expectedSize, maxSize int, req *logproto.PushRequest) error {
+	var err error
+
+	var buf bytes.Buffer
+
+	if expectedSize > 0 {
+		if expectedSize > maxSize {
+			return fmt.Errorf("message expected size larger than max (%d vs %d)", expectedSize, maxSize)
+		}
+		bufData := BytesBufferPool.Get(expectedSize + bytes.MinRead).([]byte)
+		buf = *bytes.NewBuffer(bufData)
+		buf.Reset()
+		defer BytesBufferPool.Put(bufData)
+	}
+
+	_, err = buf.ReadFrom(reader)
+
+	var body []byte
+	var l int
+	if err == nil && buf.Len() <= maxSize {
+		l, err = snappy.DecodedLen(buf.Bytes())
+		if err != nil {
+			return err
+		}
+		body = BytesBufferPool.Get(l).([]byte)
+		body = body[:l]
+		defer BytesBufferPool.Put(body)
+		body, err = snappy.Decode(body, buf.Bytes())
+	}
+
+	if err != nil {
+		return err
+	}
+	if len(body) > maxSize {
+		return fmt.Errorf("received message larger than max (%d vs %d)", len(body), maxSize)
+	}
+
+	req.Reset()
+	err = req.Unmarshal(body)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

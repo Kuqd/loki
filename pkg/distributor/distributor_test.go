@@ -1,11 +1,14 @@
 package distributor
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
@@ -15,6 +18,7 @@ import (
 	ring_client "github.com/cortexproject/cortex/pkg/ring/client"
 	"github.com/cortexproject/cortex/pkg/ring/kv"
 	"github.com/cortexproject/cortex/pkg/ring/kv/consul"
+	"github.com/cortexproject/cortex/pkg/util"
 	"github.com/cortexproject/cortex/pkg/util/flagext"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	"github.com/cortexproject/cortex/pkg/util/test"
@@ -389,4 +393,34 @@ func (r mockRing) ShuffleShard(identifier string, size int) ring.ReadRing {
 
 func (r mockRing) ShuffleShardWithLookback(identifier string, size int, lookbackPeriod time.Duration, now time.Time) ring.ReadRing {
 	return r
+}
+
+func Benchmark_ParseProto(b *testing.B) {
+	ctx := context.Background()
+	rec := httptest.NewRecorder()
+	req := makeWriteRequest(10000, 100)
+	if err := util.SerializeProtoResponse(rec, req, util.RawSnappy); err != nil {
+		b.Fatal("serialize err", err)
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+
+	b.Run("util.ParseProtoReader", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			var toDecode logproto.PushRequest
+			if err := util.ParseProtoReader(ctx, bytes.NewBuffer(rec.Body.Bytes()), len(rec.Body.Bytes()), math.MaxInt32, &toDecode, util.RawSnappy); err != nil {
+				b.Fatal("parse err", err)
+			}
+		}
+	})
+
+	b.Run("ParseProtoRequest", func(b *testing.B) {
+		for n := 0; n < b.N; n++ {
+			var toDecode logproto.PushRequest
+			if err := ParseProtoRequest(ctx, bytes.NewBuffer(rec.Body.Bytes()), len(rec.Body.Bytes()), math.MaxInt32, &toDecode); err != nil {
+				b.Fatal("parse err", err)
+			}
+		}
+	})
+
 }
