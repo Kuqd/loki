@@ -73,7 +73,7 @@ func TestValidator_ValidateEntry(t *testing.T) {
 			v, err := NewValidator(o)
 			assert.NoError(t, err)
 
-			err = v.ValidateEntry(tt.userID, testStreamLabels, tt.entry)
+			err = v.ValidateEntry(v.getValidationContextFor(tt.userID), testStreamLabels, tt.entry)
 			assert.Equal(t, tt.expected, err)
 		})
 	}

@@ -9,6 +9,7 @@ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 
 service Pusher {
   rpc Push(PushRequest) returns (PushResponse) {};
+  rpc PushBytes(PushBytesRequest) returns (PushResponse) {};
 }
 
 service Querier {
@@ -27,6 +28,10 @@ service Ingester {
 
 message PushRequest {
   repeated StreamAdapter streams = 1 [(gogoproto.jsontag) = "streams", (gogoproto.customtype) = "Stream"];
+}
+
+message PushBytesRequest {
+  repeated bytes streams = 1;
 }
 
 message PushResponse {

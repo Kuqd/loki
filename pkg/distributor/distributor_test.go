@@ -324,6 +324,19 @@ func (i *mockIngester) Push(ctx context.Context, in *logproto.PushRequest, opts 
 	return nil, nil
 }
 
+func (i *mockIngester) PushBytes(ctx context.Context, in *logproto.PushBytesRequest, opts ...grpc.CallOption) (*logproto.PushResponse, error) {
+	pushReq := &logproto.PushRequest{
+		Streams: make([]logproto.Stream, len(in.Streams)),
+	}
+	for i, s := range in.Streams {
+		if err := pushReq.Streams[i].Unmarshal(s); err != nil {
+			return nil, err
+		}
+	}
+	i.pushed = append(i.pushed, pushReq)
+	return nil, nil
+}
+
 func (i *mockIngester) Close() error {
 	return nil
 }

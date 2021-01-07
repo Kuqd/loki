@@ -13,14 +13,14 @@ import (
 	"github.com/cortexproject/cortex/pkg/util/limiter"
 	"github.com/cortexproject/cortex/pkg/util/services"
 	lru "github.com/hashicorp/golang-lru"
-	"github.com/pkg/errors"
-	"go.uber.org/atomic"
-
 	"github.com/opentracing/opentracing-go"
+	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/prometheus/pkg/pool"
 	"github.com/weaveworks/common/httpgrpc"
 	"github.com/weaveworks/common/user"
+	"go.uber.org/atomic"
 	"google.golang.org/grpc/health/grpc_health_v1"
 
 	"github.com/grafana/loki/pkg/ingester/client"
@@ -171,7 +171,7 @@ func (d *Distributor) stopping(_ error) error {
 
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 type streamTracker struct {
-	stream      logproto.Stream
+	stream      []byte
 	minSuccess  int
 	maxFailures int
 	succeeded   atomic.Int32
@@ -185,6 +185,10 @@ type pushTracker struct {
 	done           chan struct{}
 	err            chan error
 }
+
+// 1kb to 2mb
+// todo tweak this.
+var BytesBufferPool = pool.New(1*1024, 2*1024*1024, 2, func(size int) interface{} { return make([]byte, 0, size) })
 
 // Push a set of streams.
 func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*logproto.PushResponse, error) {
@@ -213,33 +217,49 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	var validationErr error
 	validatedSamplesSize := 0
 	validatedSamplesCount := 0
-
+	validationContext := d.validator.getValidationContextFor(userID)
 	for _, stream := range req.Streams {
 		stream.Labels, err = d.parseStreamLabels(userID, stream.Labels, &stream)
 		if err != nil {
 			validationErr = err
 			continue
 		}
-		entries := make([]logproto.Entry, 0, len(stream.Entries))
+		n := 0
 		for _, entry := range stream.Entries {
-			if err := d.validator.ValidateEntry(userID, stream.Labels, entry); err != nil {
+			if err := d.validator.ValidateEntry(validationContext, stream.Labels, entry); err != nil {
 				validationErr = err
 				continue
 			}
-			entries = append(entries, entry)
+			stream.Entries[n] = entry
+			n++
 			validatedSamplesSize += len(entry.Line)
 			validatedSamplesCount++
 		}
+		stream.Entries = stream.Entries[:n]
 
-		if len(entries) == 0 {
+		if len(stream.Entries) == 0 {
 			continue
 		}
-		stream.Entries = entries
+		// stream.Entries = entries
 		keys = append(keys, util.TokenFor(userID, stream.Labels))
+		s := stream.Size()
+		b := BytesBufferPool.Get(s).([]byte)
+		b = b[:s]
+		n, err := stream.MarshalTo(b)
+		if err != nil {
+			return nil, err
+		}
+		b = b[:n]
 		streams = append(streams, streamTracker{
-			stream: stream,
+			stream: b,
 		})
 	}
+	defer func() {
+		for i := range streams {
+			BytesBufferPool.Put(streams[i].stream)
+			streams[i].stream = nil
+		}
+	}()
 
 	if len(streams) == 0 {
 		return &logproto.PushResponse{}, validationErr
@@ -299,6 +319,10 @@ func (d *Distributor) Push(ctx context.Context, req *logproto.PushRequest) (*log
 	}
 }
 
+func (d *Distributor) PushBytes(_ context.Context, _ *logproto.PushBytesRequest) (*logproto.PushResponse, error) {
+	return nil, errors.New("PushBytes not supported")
+}
+
 // TODO taken from Cortex, see if we can refactor out an usable interface.
 func (d *Distributor) sendSamples(ctx context.Context, ingester ring.IngesterDesc, streamTrackers []*streamTracker, pushTracker *pushTracker) {
 	err := d.sendSamplesErr(ctx, ingester, streamTrackers)
@@ -338,14 +362,14 @@ func (d *Distributor) sendSamplesErr(ctx context.Context, ingester ring.Ingester
 		return err
 	}
 
-	req := &logproto.PushRequest{
-		Streams: make([]logproto.Stream, len(streams)),
+	req := &logproto.PushBytesRequest{
+		Streams: make([][]byte, len(streams)),
 	}
 	for i, s := range streams {
 		req.Streams[i] = s.stream
 	}
 
-	_, err = c.(logproto.PusherClient).Push(ctx, req)
+	_, err = c.(logproto.PusherClient).PushBytes(ctx, req)
 	ingesterAppends.WithLabelValues(ingester.Addr).Inc()
 	if err != nil {
 		ingesterAppendFailures.WithLabelValues(ingester.Addr).Inc()

@@ -374,6 +374,28 @@ func (i *Ingester) Push(ctx context.Context, req *logproto.PushRequest) (*logpro
 	return &logproto.PushResponse{}, err
 }
 
+// PushBytes implements logproto.Pusher.
+func (i *Ingester) PushBytes(ctx context.Context, req *logproto.PushBytesRequest) (*logproto.PushResponse, error) {
+	instanceID, err := user.ExtractOrgID(ctx)
+	if err != nil {
+		return nil, err
+	} else if i.readonly {
+		return nil, ErrReadOnly
+	}
+
+	instance := i.getOrCreateInstance(instanceID)
+	pushReq := &logproto.PushRequest{
+		Streams: make([]logproto.Stream, len(req.Streams)),
+	}
+	for i, s := range req.Streams {
+		if err := pushReq.Streams[i].Unmarshal(s); err != nil {
+			return nil, err
+		}
+	}
+	err = instance.Push(ctx, pushReq)
+	return &logproto.PushResponse{}, err
+}
+
 func (i *Ingester) getOrCreateInstance(instanceID string) *instance {
 	inst, ok := i.getInstanceByID(instanceID)
 	if ok {
