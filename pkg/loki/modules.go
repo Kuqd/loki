@@ -28,7 +28,6 @@ import (
 	"github.com/cortexproject/cortex/pkg/ring/kv/codec"
 	"github.com/cortexproject/cortex/pkg/ring/kv/memberlist"
 	cortex_ruler "github.com/cortexproject/cortex/pkg/ruler"
-	"github.com/cortexproject/cortex/pkg/util"
 	util_log "github.com/cortexproject/cortex/pkg/util/log"
 	"github.com/cortexproject/cortex/pkg/util/runtimeconfig"
 	"github.com/cortexproject/cortex/pkg/util/services"
@@ -175,8 +174,8 @@ func (t *Loki) initQuerier() (services.Service, error) {
 		// In case someone set scheduler address, we ignore it.
 		t.cfg.Worker.SchedulerAddress = ""
 		t.cfg.Worker.MaxConcurrentRequests = t.cfg.Querier.MaxConcurrent
-		level.Debug(util.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
-		worker, err = cortex_querier_worker.NewQuerierWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util.Logger, prometheus.DefaultRegisterer)
+		level.Debug(util_log.Logger).Log("msg", "initializing querier worker", "config", fmt.Sprintf("%+v", t.cfg.Worker))
+		worker, err = cortex_querier_worker.NewQuerierWorker(t.cfg.Worker, httpgrpc_server.NewServer(t.Server.HTTPServer.Handler), util_log.Logger, prometheus.DefaultRegisterer)
 		if err != nil {
 			return nil, err
 		}
@@ -251,7 +250,7 @@ func (t *Loki) initTableManager() (services.Service, error) {
 		t.cfg.TableManager.ChunkTables.InactiveReadScale.Enabled ||
 		t.cfg.TableManager.IndexTables.InactiveReadScale.Enabled) &&
 		t.cfg.StorageConfig.AWSStorageConfig.Metrics.URL == "" {
-		level.Error(util.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
+		level.Error(util_log.Logger).Log("msg", "WriteScale is enabled but no Metrics URL has been provided")
 		os.Exit(1)
 	}
 
@@ -309,7 +308,7 @@ func (t *Loki) initStore() (_ services.Service, err error) {
 		}
 	}
 
-	chunkStore, err := cortex_storage.NewStore(t.cfg.StorageConfig.Config, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util.Logger)
+	chunkStore, err := cortex_storage.NewStore(t.cfg.StorageConfig.Config, t.cfg.ChunkStoreConfig, t.cfg.SchemaConfig.SchemaConfig, t.overrides, prometheus.DefaultRegisterer, nil, util_log.Logger)
 	if err != nil {
 		return
 	}
@@ -367,7 +366,7 @@ type disabledShuffleShardingLimits struct{}
 func (disabledShuffleShardingLimits) MaxQueriersPerUser(userID string) int { return 0 }
 
 func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
-	level.Debug(util.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
+	level.Debug(util_log.Logger).Log("msg", "initializing query frontend", "config", fmt.Sprintf("%+v", t.cfg.Frontend))
 
 	roundTripper, frontendV1, _, err := frontend.InitFrontend(frontend.CombinedFrontendConfig{
 		// Don't set FrontendV2 field to make sure that only frontendV1 can be initialized.
@@ -375,7 +374,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		FrontendV1:        t.cfg.Frontend.FrontendV1,
 		CompressResponses: t.cfg.Frontend.CompressResponses,
 		DownstreamURL:     t.cfg.Frontend.DownstreamURL,
-	}, disabledShuffleShardingLimits{}, t.cfg.Server.GRPCListenPort, util.Logger, prometheus.DefaultRegisterer)
+	}, disabledShuffleShardingLimits{}, t.cfg.Server.GRPCListenPort, util_log.Logger, prometheus.DefaultRegisterer)
 	if err != nil {
 		return nil, err
 	}
@@ -384,13 +383,13 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 		frontendv1pb.RegisterFrontendServer(t.Server.GRPC, t.frontend)
 	}
 
-	level.Debug(util.Logger).Log("msg", "initializing query range tripperware",
+	level.Debug(util_log.Logger).Log("msg", "initializing query range tripperware",
 		"config", fmt.Sprintf("%+v", t.cfg.QueryRange),
 		"limits", fmt.Sprintf("%+v", t.cfg.LimitsConfig),
 	)
 	tripperware, stopper, err := queryrange.NewTripperware(
 		t.cfg.QueryRange,
-		util.Logger,
+		util_log.Logger,
 		t.overrides,
 		t.cfg.SchemaConfig.SchemaConfig,
 		t.cfg.Querier.QueryIngestersWithin,
@@ -402,7 +401,7 @@ func (t *Loki) initQueryFrontend() (_ services.Service, err error) {
 	t.stopper = stopper
 
 	roundTripper = tripperware(roundTripper)
-	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util.Logger, prometheus.DefaultRegisterer)
+	frontendHandler := transport.NewHandler(t.cfg.Frontend.Handler, roundTripper, util_log.Logger, prometheus.DefaultRegisterer)
 	if t.cfg.Frontend.CompressResponses {
 		frontendHandler = gziphandler.GzipHandler(frontendHandler)
 	}
@@ -467,7 +466,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 	// to determine if it's unconfigured.  the following check, however, correctly tests this.
 	// Single binary integration tests will break if this ever drifts
 	if t.cfg.Target == All && t.cfg.Ruler.StoreConfig.IsDefaults() {
-		level.Info(util.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
+		level.Info(util_log.Logger).Log("msg", "RulerStorage is not configured in single binary mode and will not be started.")
 		return
 	}
 
@@ -492,7 +491,7 @@ func (t *Loki) initRulerStorage() (_ services.Service, err error) {
 
 func (t *Loki) initRuler() (_ services.Service, err error) {
 	if t.RulerStorage == nil {
-		level.Info(util.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
+		level.Info(util_log.Logger).Log("msg", "RulerStorage is nil.  Not starting the ruler.")
 		return nil, nil
 	}
 
@@ -509,7 +508,7 @@ func (t *Loki) initRuler() (_ services.Service, err error) {
 		t.cfg.Ruler,
 		engine,
 		prometheus.DefaultRegisterer,
-		util.Logger,
+		util_log.Logger,
 		t.RulerStorage,
 		t.overrides,
 	)
@@ -556,7 +555,7 @@ func (t *Loki) initMemberlistKV() (services.Service, error) {
 		ring.GetCodec(),
 	}
 
-	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV, util.Logger)
+	t.memberlistKV = memberlist.NewKVInitService(&t.cfg.MemberlistKV, util_log.Logger)
 	return t.memberlistKV, nil
 }
 
