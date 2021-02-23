@@ -1,8 +1,10 @@
 # Directories in this file are referenced from the root of the project not this folder
 # This file is intended to be called from the root like so:
 # docker build -t grafana/loki -f cmd/loki/Dockerfile.debug .
-
-FROM grafana/loki-build-image as build
+ARG BUILD_IMAGE_VERSION
+FROM grafana/loki-build-image:${BUILD_IMAGE_VERSION} as build
+RUN GO111MODULE=on go get \
+    github.com/go-delve/delve/cmd/dlv@v1.6.0
 ARG GOARCH="amd64"
 COPY . /src/loki
 WORKDIR /src/loki
@@ -10,7 +12,7 @@ RUN make clean && make BUILD_IN_CONTAINER=false loki-debug
 
 FROM       alpine:3.9
 RUN        apk add --update --no-cache ca-certificates
-COPY       --from=build /src/loki/cmd/loki/loki-debug /usr/bin/loki-debug
+COPY       --from=build /src/loki/ /src/loki/
 COPY       --from=build /go/bin/dlv /usr/bin/dlv
 COPY       cmd/loki/loki-docker-config.yaml /etc/loki/local-config.yaml
 EXPOSE     3100
@@ -24,5 +26,5 @@ RUN apk add --no-cache libc6-compat
 # Run delve, ending with -- because we pass params via kubernetes, per the docs:
 #   Pass flags to the program you are debugging using --, for example:`
 #   dlv exec ./hello -- server --config conf/config.toml`
-ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue" , "--api-version=2", "exec", "/usr/bin/loki-debug", "--"]
+ENTRYPOINT ["/usr/bin/dlv", "--listen=:40000", "--headless=true", "--log", "--continue" ,"--accept-multiclient", "--api-version=2", "exec", "/src/loki/cmd/loki/loki-debug", "--"]
 CMD        ["-config.file=/etc/loki/local-config.yaml"]

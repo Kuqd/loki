@@ -493,7 +493,7 @@ loki-image-cross:
 
 loki-debug-image: OCI_PLATFORMS=
 loki-debug-image:
-	$(SUDO) $(BUILD_OCI) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
+	$(SUDO) $(BUILD_OCI) --build-arg BUILD_IMAGE_VERSION=$(BUILD_IMAGE_VERSION) -t $(IMAGE_PREFIX)/loki:$(IMAGE_TAG)-debug -f cmd/loki/Dockerfile.debug .
 
 loki-push: loki-image-cross
 	$(call push-image,loki)
