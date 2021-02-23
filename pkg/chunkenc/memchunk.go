@@ -686,7 +686,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 
 	if direction == logproto.FORWARD {
 		return iter.NewTimeRangedIterator(
-			iter.NewNonOverlappingIterator(its, ""),
+			iter.NewHeapIterator(ctx, its, direction),
 			time.Unix(0, mint),
 			time.Unix(0, maxt),
 		), nil
@@ -707,7 +707,7 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		its[i], its[j] = its[j], its[i]
 	}
 
-	return iter.NewNonOverlappingIterator(its, ""), nil
+	return iter.NewHeapIterator(ctx, its, direction), nil
 }
 
 // Iterator implements Chunk.

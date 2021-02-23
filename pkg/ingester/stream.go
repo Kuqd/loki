@@ -316,7 +316,6 @@ func (s *stream) Bounds() (from, to time.Time) {
 		_, to = s.chunks[len(s.chunks)-1].chunk.Bounds()
 	}
 	return from, to
-
 }
 
 // Returns an iterator.
@@ -343,7 +342,7 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 	if ingStats != nil {
 		ingStats.TotalChunksMatched += int64(len(s.chunks))
 	}
-	return iter.NewNonOverlappingIterator(iterators, ""), nil
+	return iter.NewHeapIterator(ctx, iterators, direction), nil
 }
 
 // Returns an SampleIterator.
