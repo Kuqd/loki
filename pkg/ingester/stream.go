@@ -342,7 +342,7 @@ func (s *stream) Iterator(ctx context.Context, ingStats *stats.IngesterData, fro
 	if ingStats != nil {
 		ingStats.TotalChunksMatched += int64(len(s.chunks))
 	}
-	return iter.NewHeapIterator(ctx, iterators, direction), nil
+	return iter.NewNonOverlappingIterator(iterators, ""), nil
 }
 
 // Returns an SampleIterator.
