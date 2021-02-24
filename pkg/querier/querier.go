@@ -84,38 +84,38 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		return nil, err
 	}
 
-	_, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+	ingesterQueryInterval, _ := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.EntryIterator{}
-	// if ingesterQueryInterval != nil {
-	// 	// Make a copy of the request before modifying
-	// 	// because the initial request is used below to query stores
-	// 	queryRequestCopy := *params.QueryRequest
-	// 	newParams := logql.SelectLogParams{
-	// 		QueryRequest: &queryRequestCopy,
-	// 	}
-	// 	newParams.Start = ingesterQueryInterval.start
-	// 	newParams.End = ingesterQueryInterval.end
+	if ingesterQueryInterval != nil {
+		// Make a copy of the request before modifying
+		// because the initial request is used below to query stores
+		queryRequestCopy := *params.QueryRequest
+		newParams := logql.SelectLogParams{
+			QueryRequest: &queryRequestCopy,
+		}
+		newParams.Start = ingesterQueryInterval.start
+		newParams.End = ingesterQueryInterval.end
 
-	// 	ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-
-	// 	iters = append(iters, ingesterIters...)
-	// }
-
-	if storeQueryInterval != nil {
-		params.Start = storeQueryInterval.start
-		params.End = storeQueryInterval.end
-
-		storeIter, err := q.store.SelectLogs(ctx, params)
+		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
 		if err != nil {
 			return nil, err
 		}
 
-		iters = append(iters, storeIter)
+		iters = append(iters, ingesterIters...)
 	}
+
+	// if storeQueryInterval != nil {
+	// 	params.Start = storeQueryInterval.start
+	// 	params.End = storeQueryInterval.end
+
+	// 	storeIter, err := q.store.SelectLogs(ctx, params)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+
+	// 	iters = append(iters, storeIter)
+	// }
 
 	return iter.NewHeapIterator(ctx, iters, params.Direction), nil
 }
