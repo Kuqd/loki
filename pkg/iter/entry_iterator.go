@@ -339,6 +339,7 @@ type queryClientIterator struct {
 	err       error
 	curr      EntryIterator
 	i, count  int
+	lastts    int64
 }
 
 type QueryClient interface {
@@ -369,10 +370,14 @@ func (i *queryClientIterator) Next() bool {
 		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
 			Log("message", "batch received", "ingester#", i.i, "batch#", i.count, "batch_json", batchToString(batch))
 		i.count++
+		var c int64
 		for _, s := range batch.Streams {
 			for _, e := range s.Entries {
+				diff := i.lastts - e.Timestamp.UnixNano()
 				level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
-					Log("message", "batch entry", "ingester#", i.i, "batch#", i.count, "ts", e.Timestamp.UnixNano(), "entry", e.Line)
+					Log("message", "batch entry", "ingester#", i.i, "batch#", i.count, "ts", e.Timestamp.UnixNano(), "diff", diff, "c", c)
+				c++
+				i.lastts = e.Timestamp.UnixNano()
 			}
 		}
 		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
