@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	queryBatchSize       = 1000
+	queryBatchSize       = 128
 	queryBatchSampleSize = 512
 )
 
