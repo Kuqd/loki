@@ -32,7 +32,7 @@ import (
 )
 
 const (
-	queryBatchSize       = 128
+	queryBatchSize       = 5
 	queryBatchSampleSize = 512
 )
 
@@ -184,7 +184,6 @@ func (i *instance) Push(ctx context.Context, req *logproto.PushRequest) error {
 				return err
 			}
 		}
-
 	}
 
 	return appendErr
@@ -391,7 +390,6 @@ func (i *instance) Series(_ context.Context, req *logproto.SeriesRequest) (*logp
 		series = make([]logproto.SeriesIdentifier, 0, len(dedupedSeries))
 		for _, v := range dedupedSeries {
 			series = append(series, v)
-
 		}
 	}
 
@@ -617,10 +615,8 @@ func (o *OnceSwitch) Trigger() {
 // TriggerAnd will ensure the switch is on and run the provided function if
 // the switch was not already toggled on.
 func (o *OnceSwitch) TriggerAnd(fn func()) {
-
 	triggeredPrior := o.triggered.Swap(true)
 	if !triggeredPrior && fn != nil {
 		fn()
 	}
-
 }
