@@ -793,7 +793,6 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	}
 	level.Error(util_log.WithContext(ctx, util_log.Logger)).
 		Log("message", "headchunk added", "hb.mint", hb.mint, "hb.maxt", hb.maxt)
-	return iter.NoopIterator
 	chunkStats := stats.GetChunkData(ctx)
 
 	// We are doing a copy everytime, this is because b.entries could change completely,
