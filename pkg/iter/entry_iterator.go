@@ -370,12 +370,13 @@ func (i *queryClientIterator) Next() bool {
 		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
 			Log("message", "batch received", "ingester#", i.i, "batch#", i.count, "batch_json", batchToString(batch))
 		i.count++
-		var c int64
+
 		for _, s := range batch.Streams {
+			var c int64
 			for _, e := range s.Entries {
 				diff := i.lastts - e.Timestamp.UnixNano()
 				level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
-					Log("message", "batch entry", "ingester#", i.i, "batch#", i.count, "ts", e.Timestamp.UnixNano(), "diff", diff, "c", c)
+					Log("message", "batch entry", "ingester#", i.i, "batch#", i.count, "ts", e.Timestamp.UnixNano(), "diff", diff, "c", c, "stream", s.Labels)
 				c++
 				i.lastts = e.Timestamp.UnixNano()
 			}
