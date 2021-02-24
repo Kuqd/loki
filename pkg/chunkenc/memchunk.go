@@ -677,6 +677,8 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		if maxt < b.mint || b.maxt < mint {
 			continue
 		}
+		level.Error(util_log.WithContext(ctx, util_log.Logger)).
+			Log("message", "block added", "b.mint", b.mint, "b.maxt", b.maxt)
 		its = append(its, encBlock{c.encoding, b}.Iterator(ctx, pipeline))
 	}
 
@@ -789,7 +791,9 @@ func (hb *headBlock) iterator(ctx context.Context, direction logproto.Direction,
 	if hb.isEmpty() || (maxt < hb.mint || hb.maxt < mint) {
 		return iter.NoopIterator
 	}
-
+	level.Error(util_log.WithContext(ctx, util_log.Logger)).
+		Log("message", "headchunk added", "hb.mint", hb.mint, "hb.maxt", hb.maxt)
+	return iter.NoopIterator
 	chunkStats := stats.GetChunkData(ctx)
 
 	// We are doing a copy everytime, this is because b.entries could change completely,
