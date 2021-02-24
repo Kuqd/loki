@@ -368,7 +368,8 @@ func (i *queryClientIterator) Next() bool {
 			return false
 		}
 		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
-			Log("message", "batch received", "ingester#", i.i, "batch#", i.count, "batch_json", batchToString(batch))
+			Log("message", "batch received", "ingester#", i.i, "batch#", i.count)
+		fmt.Println(batchToString(batch))
 		i.count++
 
 		for _, s := range batch.Streams {
