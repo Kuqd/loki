@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"runtime/pprof"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/common/config"
@@ -186,7 +187,6 @@ func main() {
 }
 
 func newQueryClient(app *kingpin.Application) client.Client {
-
 	client := &client.DefaultClient{
 		TLSConfig: config.TLSConfig{},
 	}
@@ -221,7 +221,6 @@ func newLabelQuery(cmd *kingpin.CmdClause) *labelquery.LabelQuery {
 
 	// executed after all command flags are parsed
 	cmd.Action(func(c *kingpin.ParseContext) error {
-
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 
@@ -249,7 +248,6 @@ func newSeriesQuery(cmd *kingpin.CmdClause) *seriesquery.SeriesQuery {
 
 	// executed after all command flags are parsed
 	cmd.Action(func(c *kingpin.ParseContext) error {
-
 		defaultEnd := time.Now()
 		defaultStart := defaultEnd.Add(-since)
 
@@ -277,7 +275,6 @@ func newQuery(instant bool, cmd *kingpin.CmdClause) *query.Query {
 
 	// executed after all command flags are parsed
 	cmd.Action(func(c *kingpin.ParseContext) error {
-
 		if instant {
 			q.SetInstant(mustParse(now, time.Now()))
 		} else {
@@ -321,8 +318,11 @@ func mustParse(t string, defaultTime time.Time) time.Time {
 		return defaultTime
 	}
 
-	ret, err := time.Parse(time.RFC3339Nano, t)
+	if nano, err := strconv.ParseInt(t, 10, 64); err == nil {
+		return time.Unix(0, nano)
+	}
 
+	ret, err := time.Parse(time.RFC3339Nano, t)
 	if err != nil {
 		log.Fatalf("Unable to parse time %v", err)
 	}

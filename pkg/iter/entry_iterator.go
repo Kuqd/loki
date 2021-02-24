@@ -372,7 +372,7 @@ func (i *queryClientIterator) Next() bool {
 }
 
 func batchToString(batch *logproto.QueryResponse) string {
-	d, err := jsoniter.MarshalIndent(batch, "", "\t")
+	d, err := jsoniter.MarshalIndent(batch, "", "  ")
 	if err != nil {
 		panic(err)
 	}
