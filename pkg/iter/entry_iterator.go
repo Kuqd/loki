@@ -338,7 +338,7 @@ type queryClientIterator struct {
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
-	i         int
+	i, count  int
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
@@ -351,20 +351,19 @@ func NewQueryClientIterator(i int, client logproto.Querier_QueryClient, directio
 }
 
 func (i *queryClientIterator) Next() bool {
-	var count int
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
 			level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
-				Log("message", "batch EOF", "ingester#", i.i, "batch#", count)
+				Log("message", "batch EOF", "ingester#", i.i, "batch#", i.count)
 			return false
 		} else if err != nil {
 			i.err = err
 			return false
 		}
 		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
-			Log("message", "batch received", "ingester#", i.i, "batch#", count, "batch_json", batchToString(batch))
-		count++
+			Log("message", "batch received", "ingester#", i.i, "batch#", i.count, "batch_json", batchToString(batch))
+		i.count++
 		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
 	}
 
