@@ -3,6 +3,7 @@ package iter
 import (
 	"context"
 	"fmt"
+	"io"
 	"testing"
 	"time"
 
@@ -13,8 +14,10 @@ import (
 	"github.com/grafana/loki/pkg/logql/stats"
 )
 
-const testSize = 10
-const defaultLabels = "{foo=\"baz\"}"
+const (
+	testSize      = 10
+	defaultLabels = "{foo=\"baz\"}"
+)
 
 func TestIterator(t *testing.T) {
 	for i, tc := range []struct {
@@ -485,7 +488,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			6,
@@ -502,7 +506,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			6,
@@ -516,7 +521,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.FORWARD,
 			0,
@@ -530,7 +536,8 @@ func Test_DuplicateCount(t *testing.T) {
 							Timestamp: time.Unix(0, 4),
 							Line:      "bar",
 						},
-					}}),
+					},
+				}),
 			},
 			logproto.BACKWARD,
 			0,
@@ -549,7 +556,6 @@ func Test_DuplicateCount(t *testing.T) {
 }
 
 func Test_timeRangedIterator_Next(t *testing.T) {
-
 	tests := []struct {
 		mint   time.Time
 		maxt   time.Time
@@ -598,5 +604,97 @@ func Test_timeRangedIterator_Next(t *testing.T) {
 			}
 			require.NoError(t, it.Close())
 		})
+	}
+}
+
+type fakebatchClient struct {
+	batches []*logproto.QueryResponse
+	curr    int
+}
+
+func (f *fakebatchClient) Recv() (*logproto.QueryResponse, error) {
+	if f.curr >= len(f.batches) {
+		return nil, io.EOF
+	}
+	res := f.batches[f.curr]
+	f.curr++
+	return res, nil
+}
+func (f *fakebatchClient) Context() context.Context { return context.TODO() }
+
+func entry(i int) logproto.Entry {
+	return logproto.Entry{
+		Timestamp: time.Unix(0, int64(i)),
+		Line:      fmt.Sprintf("%d", i),
+	}
+}
+
+func Test_QueryClientBatch(t *testing.T) {
+	it := NewHeapIterator(context.TODO(), []EntryIterator{
+		NewQueryClientIterator(1, &fakebatchClient{
+			batches: []*logproto.QueryResponse{
+				{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{app="foo"}`,
+							Entries: []logproto.Entry{
+								entry(5),
+								entry(4),
+							},
+						},
+					},
+				},
+				{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{app="foo"}`,
+							Entries: []logproto.Entry{
+								entry(3),
+								entry(1),
+							},
+						},
+					},
+				},
+			},
+		}, logproto.BACKWARD),
+		NewQueryClientIterator(2, &fakebatchClient{
+			batches: []*logproto.QueryResponse{
+				{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{app="foo"}`,
+							Entries: []logproto.Entry{
+								entry(4),
+							},
+						},
+					},
+				},
+				{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{app="foo"}`,
+							Entries: []logproto.Entry{
+								entry(3),
+								entry(2),
+							},
+						},
+					},
+				},
+				{
+					Streams: []logproto.Stream{
+						{
+							Labels: `{app="foo"}`,
+							Entries: []logproto.Entry{
+								entry(1),
+							},
+						},
+					},
+				},
+			},
+		}, logproto.BACKWARD),
+	}, logproto.BACKWARD)
+
+	for it.Next() {
+		t.Log(it.Entry())
 	}
 }

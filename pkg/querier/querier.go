@@ -84,26 +84,26 @@ func (q *Querier) SelectLogs(ctx context.Context, params logql.SelectLogParams) 
 		return nil, err
 	}
 
-	ingesterQueryInterval, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
+	_, storeQueryInterval := q.buildQueryIntervals(params.Start, params.End)
 
 	iters := []iter.EntryIterator{}
-	if ingesterQueryInterval != nil {
-		// Make a copy of the request before modifying
-		// because the initial request is used below to query stores
-		queryRequestCopy := *params.QueryRequest
-		newParams := logql.SelectLogParams{
-			QueryRequest: &queryRequestCopy,
-		}
-		newParams.Start = ingesterQueryInterval.start
-		newParams.End = ingesterQueryInterval.end
+	// if ingesterQueryInterval != nil {
+	// 	// Make a copy of the request before modifying
+	// 	// because the initial request is used below to query stores
+	// 	queryRequestCopy := *params.QueryRequest
+	// 	newParams := logql.SelectLogParams{
+	// 		QueryRequest: &queryRequestCopy,
+	// 	}
+	// 	newParams.Start = ingesterQueryInterval.start
+	// 	newParams.End = ingesterQueryInterval.end
 
-		ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
-		if err != nil {
-			return nil, err
-		}
+	// 	ingesterIters, err := q.ingesterQuerier.SelectLogs(ctx, newParams)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
-		iters = append(iters, ingesterIters...)
-	}
+	// 	iters = append(iters, ingesterIters...)
+	// }
 
 	if storeQueryInterval != nil {
 		params.Start = storeQueryInterval.start
@@ -353,11 +353,9 @@ func (q *Querier) Series(ctx context.Context, req *logproto.SeriesRequest) (*log
 	defer cancel()
 
 	return q.awaitSeries(ctx, req)
-
 }
 
 func (q *Querier) awaitSeries(ctx context.Context, req *logproto.SeriesRequest) (*logproto.SeriesResponse, error) {
-
 	// buffer the channels to the # of calls they're expecting su
 	series := make(chan [][]logproto.SeriesIdentifier, 2)
 	errs := make(chan error, 2)
@@ -422,7 +420,6 @@ func (q *Querier) seriesForMatchers(
 	from, through time.Time,
 	groups []string,
 ) ([]logproto.SeriesIdentifier, error) {
-
 	var results []logproto.SeriesIdentifier
 	// If no matchers were specified for the series query,
 	// we send a query with an empty matcher which will match every series.

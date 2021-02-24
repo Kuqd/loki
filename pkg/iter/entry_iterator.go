@@ -334,15 +334,20 @@ func NewQueryResponseIterator(ctx context.Context, resp *logproto.QueryResponse,
 }
 
 type queryClientIterator struct {
-	client    logproto.Querier_QueryClient
+	client    QueryClient
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
 	i, count  int
 }
 
+type QueryClient interface {
+	Recv() (*logproto.QueryResponse, error)
+	Context() context.Context
+}
+
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQueryClientIterator(i int, client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(i int, client QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
 		direction: direction,
@@ -391,7 +396,7 @@ func (i *queryClientIterator) Error() error {
 }
 
 func (i *queryClientIterator) Close() error {
-	return i.client.CloseSend()
+	return i.err
 }
 
 type nonOverlappingIterator struct {
