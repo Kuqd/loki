@@ -923,6 +923,9 @@ func (si *bufferedIterator) Next() bool {
 	si.stats.DecompressedBytes += int64(len(line)) + 2*binary.MaxVarintLen64
 	si.stats.DecompressedLines++
 
+	if bytes.Equal(si.currLine, line) && si.currTs == ts {
+		fmt.Println("dupe line read", string(si.currLine), ts)
+	}
 	si.currTs = ts
 	si.currLine = line
 	return true
