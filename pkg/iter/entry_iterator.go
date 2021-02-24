@@ -369,6 +369,12 @@ func (i *queryClientIterator) Next() bool {
 		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
 			Log("message", "batch received", "ingester#", i.i, "batch#", i.count, "batch_json", batchToString(batch))
 		i.count++
+		for _, s := range batch.Streams {
+			for _, e := range s.Entries {
+				level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
+					Log("message", "batch entry", "ingester#", i.i, "batch#", i.count, "ts", e.Timestamp.UnixNano(), "entry", e.Line)
+			}
+		}
 		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
 	}
 
