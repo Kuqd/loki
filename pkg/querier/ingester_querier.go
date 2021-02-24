@@ -109,7 +109,7 @@ func (q *IngesterQuerier) SelectLogs(ctx context.Context, params logql.SelectLog
 
 	iterators := make([]iter.EntryIterator, len(resps))
 	for i := range resps {
-		iterators[i] = iter.NewQueryClientIterator(resps[i].response.(logproto.Querier_QueryClient), params.Direction)
+		iterators[i] = iter.NewQueryClientIterator(i, resps[i].response.(logproto.Querier_QueryClient), params.Direction)
 	}
 	return iterators, nil
 }
@@ -273,7 +273,6 @@ func (q *IngesterQuerier) GetChunkIDs(ctx context.Context, from, through model.T
 			End:      through.Time(),
 		})
 	})
-
 	if err != nil {
 		return nil, err
 	}

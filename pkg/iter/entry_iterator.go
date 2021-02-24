@@ -8,9 +8,12 @@ import (
 	"sync"
 	"time"
 
+	util_log "github.com/cortexproject/cortex/pkg/util/log"
+	"github.com/go-kit/kit/log/level"
 	"github.com/grafana/loki/pkg/helpers"
 	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/stats"
+	jsoniter "github.com/json-iterator/go"
 )
 
 // EntryIterator iterates over entries in time-order.
@@ -335,30 +338,45 @@ type queryClientIterator struct {
 	direction logproto.Direction
 	err       error
 	curr      EntryIterator
+	i         int
 }
 
 // NewQueryClientIterator returns an iterator over a QueryClient.
-func NewQueryClientIterator(client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
+func NewQueryClientIterator(i int, client logproto.Querier_QueryClient, direction logproto.Direction) EntryIterator {
 	return &queryClientIterator{
 		client:    client,
 		direction: direction,
+		i:         i,
 	}
 }
 
 func (i *queryClientIterator) Next() bool {
+	var count int
 	for i.curr == nil || !i.curr.Next() {
 		batch, err := i.client.Recv()
 		if err == io.EOF {
+			level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
+				Log("message", "batch EOF", "ingester#", i.i, "batch#", count)
 			return false
 		} else if err != nil {
 			i.err = err
 			return false
 		}
-
+		level.Error(util_log.WithContext(i.client.Context(), util_log.Logger)).
+			Log("message", "batch received", "ingester#", i.i, "batch#", count, "batch_json", batchToString(batch))
+		count++
 		i.curr = NewQueryResponseIterator(i.client.Context(), batch, i.direction)
 	}
 
 	return true
+}
+
+func batchToString(batch *logproto.QueryResponse) string {
+	d, err := jsoniter.MarshalIndent(batch, "", "\t")
+	if err != nil {
+		panic(err)
+	}
+	return string(d)
 }
 
 func (i *queryClientIterator) Entry() logproto.Entry {
@@ -502,7 +520,6 @@ func NewReversedIter(it EntryIterator, limit uint32, preload bool) (EntryIterato
 		entriesWithLabels: make([]entryWithLabels, 0, 1024),
 		limit:             limit,
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}
@@ -578,7 +595,6 @@ func NewEntryReversedIter(it EntryIterator) (EntryIterator, error) {
 		iter: it,
 		buf:  entryBufferPool.Get().(*entryBuffer),
 	}, it.Error()
-
 	if err != nil {
 		return nil, err
 	}
