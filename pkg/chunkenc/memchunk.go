@@ -694,11 +694,23 @@ func (c *MemChunk) Iterator(ctx context.Context, mintT, maxtT time.Time, directi
 		), nil
 	}
 	for i, it := range its {
-		r, err := iter.NewEntryReversedIter(
-			iter.NewTimeRangedIterator(it,
+		var (
+			r   iter.EntryIterator
+			err error
+		)
+		if i == len(its)-1 {
+			r = iter.NewTimeRangedIterator(it,
 				time.Unix(0, mint),
 				time.Unix(0, maxt),
-			))
+			)
+		} else {
+			r, err = iter.NewEntryReversedIter(
+				iter.NewTimeRangedIterator(it,
+					time.Unix(0, mint),
+					time.Unix(0, maxt),
+				))
+		}
+
 		if err != nil {
 			return nil, err
 		}

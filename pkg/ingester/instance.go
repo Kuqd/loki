@@ -527,7 +527,12 @@ func isDone(ctx context.Context) bool {
 	}
 }
 
-func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer logproto.Querier_QueryServer, limit uint32) error {
+type Querier_QueryServer interface {
+	Context() context.Context
+	Send(res *logproto.QueryResponse) error
+}
+
+func sendBatches(ctx context.Context, i iter.EntryIterator, queryServer Querier_QueryServer, limit uint32) error {
 	ingStats := stats.GetIngesterData(ctx)
 	if limit == 0 {
 		// send all batches.

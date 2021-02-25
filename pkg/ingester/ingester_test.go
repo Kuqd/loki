@@ -447,7 +447,6 @@ func TestIngester_boltdbShipperMaxLookBack(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-
 	for i, tc := range []struct {
 		in       Config
 		err      bool
@@ -491,3 +490,65 @@ func TestValidate(t *testing.T) {
 		})
 	}
 }
+
+func Test_Iterator(t *testing.T) {
+	ingesterConfig := defaultIngesterTestConfig(t)
+	defaultLimits := defaultLimitsTestConfig()
+	overrides, err := validation.NewOverrides(defaultLimits, nil)
+	require.NoError(t, err)
+	instance := newInstance(&ingesterConfig, "fake", NewLimiter(overrides, &ringCountMock{count: 1}, 1), noopWAL{}, NilMetrics, nil)
+	ctx := context.TODO()
+	direction := logproto.BACKWARD
+	limit := uint32(2)
+
+	// insert data.
+	for i := 0; i < 10; i++ {
+		stream := "dispatcher"
+		if i%2 == 0 {
+			stream = "worker"
+		}
+		require.NoError(t,
+			instance.Push(ctx, &logproto.PushRequest{
+				Streams: []logproto.Stream{
+					{
+						Labels: fmt.Sprintf(`{host="agent", log_stream="%s",job="3"}`, stream),
+						Entries: []logproto.Entry{
+							{Timestamp: time.Unix(0, int64(i)), Line: fmt.Sprintf(`msg="%s_%d"`, stream, i)},
+						},
+					},
+				},
+			}),
+		)
+	}
+
+	itrs, err := instance.Query(ctx,
+		logql.SelectLogParams{
+			QueryRequest: &logproto.QueryRequest{
+				Selector:  `{job="3"} | logfmt`,
+				Limit:     limit,
+				Start:     time.Unix(0, 0),
+				End:       time.Unix(0, 100000000),
+				Direction: direction,
+			},
+		},
+	)
+	require.NoError(t, err)
+	heapItr := iter.NewHeapIterator(ctx, itrs, direction)
+	require.NoError(t,
+		sendBatches(ctx, heapItr,
+			fakeQueryServer(
+				func(qr *logproto.QueryResponse) error {
+					t.Log(qr)
+					return nil
+				},
+			),
+			limit),
+	)
+}
+
+type fakeQueryServer func(*logproto.QueryResponse) error
+
+func (f fakeQueryServer) Send(res *logproto.QueryResponse) error {
+	return f(res)
+}
+func (f fakeQueryServer) Context() context.Context { return context.TODO() }
