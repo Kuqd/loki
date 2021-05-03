@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"regexp/syntax"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/prometheus/prometheus/pkg/labels"
 )
@@ -164,13 +166,78 @@ func (r regexpFilter) ToStage() Stage {
 type containsFilter struct {
 	match           []byte
 	caseInsensitive bool
+
+	buf []byte
 }
 
-func (l containsFilter) Filter(line []byte) bool {
+func (l *containsFilter) Filter(line []byte) bool {
 	if l.caseInsensitive {
-		line = bytes.ToLower(line)
+		// l.buf = toLowerTo(line, l.buf)
+		return bytes.Contains(line, l.match)
 	}
 	return bytes.Contains(line, l.match)
+}
+
+// ToLower returns a copy of the byte slice s with all Unicode letters mapped to
+// their lower case.
+func toLowerTo(src []byte, dst []byte) []byte {
+	if dst == nil || len(src) > cap(dst) { // initialize at least 1024bytes if the size if not big enough
+		size := len(src)
+		if size < 1024 {
+			size = 1024
+		}
+		dst = make([]byte, size)
+	}
+	isASCII, hasUpper := true, false
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		if c >= utf8.RuneSelf {
+			isASCII = false
+			break
+		}
+		hasUpper = hasUpper || ('A' <= c && c <= 'Z')
+	}
+	if isASCII { // optimize for ASCII-only byte slices.
+		if !hasUpper {
+			return dst[:0]
+		}
+		for i := 0; i < len(src); i++ {
+			c := src[i]
+			if 'A' <= c && c <= 'Z' {
+				c += 'a' - 'A'
+			}
+			dst[i] = c
+		}
+		return dst
+	}
+
+	maxbytes := len(dst) // length of b
+	nbytes := 0          // number of bytes encoded in b
+	for i := 0; i < len(src); {
+		wid := 1
+		r := rune(src[i])
+		if r >= utf8.RuneSelf {
+			r, wid = utf8.DecodeRune(src[i:])
+		}
+
+		r = unicode.ToLower(r)
+		if r >= 0 {
+			rl := utf8.RuneLen(r)
+			if rl < 0 {
+				rl = len(string(utf8.RuneError))
+			}
+			if nbytes+rl > maxbytes {
+				// Grow the buffer.
+				maxbytes = maxbytes*2 + utf8.UTFMax
+				nb := make([]byte, maxbytes)
+				copy(nb, dst[0:nbytes])
+				dst = nb
+			}
+			nbytes += utf8.EncodeRune(dst[nbytes:maxbytes], r)
+		}
+		i += wid
+	}
+	return dst[0:nbytes]
 }
 
 func (l containsFilter) ToStage() Stage {
@@ -193,7 +260,7 @@ func newContainsFilter(match []byte, caseInsensitive bool) Filterer {
 	if caseInsensitive {
 		match = bytes.ToLower(match)
 	}
-	return containsFilter{
+	return &containsFilter{
 		match:           match,
 		caseInsensitive: caseInsensitive,
 	}

@@ -132,20 +132,20 @@ func Benchmark_LineFilter(b *testing.B) {
 	for _, test := range []struct {
 		re string
 	}{
-		{"foo.*"},
+		// {"foo.*"},
 		{"(?i)foo"},
-		{".*foo.*"},
-		{".*foo"},
-		{"foo|bar"},
-		{"foo|bar|buzz"},
-		{"foo|(bar|buzz)"},
-		{"foo|bar.*|buzz"},
-		{".*foo.*|bar|uzz"},
-		{"((f.*)|foobar.*)|.*buzz"},
-		{"(?P<foo>.*foo.*|bar)"},
+		// {".*foo.*"},
+		// {".*foo"},
+		// {"foo|bar"},
+		// {"foo|bar|buzz"},
+		// {"foo|(bar|buzz)"},
+		// {"foo|bar.*|buzz"},
+		// {".*foo.*|bar|uzz"},
+		// {"((f.*)|foobar.*)|.*buzz"},
+		// {"(?P<foo>.*foo.*|bar)"},
 	} {
 		benchmarkRegex(b, test.re, logline, true)
-		benchmarkRegex(b, test.re, logline, false)
+		// benchmarkRegex(b, test.re, logline, false)
 	}
 }
 
@@ -154,26 +154,24 @@ func Benchmark_LineFilter(b *testing.B) {
 var res bool
 
 func benchmarkRegex(b *testing.B, re, line string, match bool) {
-	var m bool
 	l := []byte(line)
-	d, err := newRegexpFilter(re, match)
-	if err != nil {
-		b.Fatal(err)
-	}
+	// d, err := newRegexpFilter(re, match)
+	// if err != nil {
+	// 	b.Fatal(err)
+	// }
 	s, err := parseRegexpFilter(re, match)
 	if err != nil {
 		b.Fatal(err)
 	}
 	b.ResetTimer()
-	b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			m = d.Filter(l)
-		}
-	})
+	// b.Run(fmt.Sprintf("default_%v_%s", match, re), func(b *testing.B) {
+	// 	for i := 0; i < b.N; i++ {
+	// 		m = d.Filter(l)
+	// 	}
+	// })
 	b.Run(fmt.Sprintf("simplified_%v_%s", match, re), func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
-			m = s.Filter(l)
+			res = s.Filter(l)
 		}
 	})
-	res = m
 }
