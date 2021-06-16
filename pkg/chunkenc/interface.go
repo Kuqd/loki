@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
+	"math"
 	"strings"
-	"time"
+	"sync"
 
 	"github.com/grafana/loki/pkg/iter"
-	"github.com/grafana/loki/pkg/logproto"
 	"github.com/grafana/loki/pkg/logql/log"
 )
 
@@ -87,7 +86,6 @@ func ParseEncoding(enc string) (Encoding, error) {
 		}
 	}
 	return 0, fmt.Errorf("invalid encoding: %s, supported: %s", enc, SupportedEncoding())
-
 }
 
 // SupportedEncoding returns the list of supported Encoding.
@@ -104,24 +102,29 @@ func SupportedEncoding() string {
 
 // Chunk is the interface for the compressed logs chunk format.
 type Chunk interface {
-	Bounds() (time.Time, time.Time)
-	SpaceFor(*logproto.Entry) bool
-	Append(*logproto.Entry) error
-	Iterator(ctx context.Context, mintT, maxtT time.Time, direction logproto.Direction, pipeline log.StreamPipeline) (iter.EntryIterator, error)
-	SampleIterator(ctx context.Context, from, through time.Time, extractor log.StreamSampleExtractor) iter.SampleIterator
-	// Returns the list of blocks in the chunks.
-	Blocks(mintT, maxtT time.Time) []Block
-	Size() int
-	Bytes() ([]byte, error)
-	BytesWith([]byte) ([]byte, error) // uses provided []byte for buffer instantiation
-	io.WriterTo
-	BlockCount() int
-	Utilization() float64
-	UncompressedSize() int
-	CompressedSize() int
-	Close() error
+	// Bytes returns the underlying byte slice of the chunk.
+	Bytes() []byte
+
+	// Encoding returns the encoding type of the chunk.
 	Encoding() Encoding
-	Rebound(start, end time.Time) (Chunk, error)
+
+	// Appender returns an appender to append samples to the chunk.
+	Appender() (Appender, error)
+
+	// The iterator passed as argument is for re-use.
+	// Depending on implementation, the iterator can
+	// be re-used or a new iterator can be allocated.
+	Iterator(iter.EntryIterator) iter.EntryIterator
+
+	// NumSamples returns the number of samples in the chunk.
+	NumSamples() int
+
+	// Compact is called whenever a chunk is expected to be complete (no more
+	// samples appended) and the underlying implementation can eventually
+	// optimize the chunk.
+	// There's no strong guarantee that no samples will be appended once
+	// Compact() is called. Implementing this function is optional.
+	Compact()
 }
 
 // Block is a chunk block.
@@ -138,4 +141,69 @@ type Block interface {
 	Iterator(ctx context.Context, pipeline log.StreamPipeline) iter.EntryIterator
 	// SampleIterator returns a sample iterator for the block.
 	SampleIterator(ctx context.Context, extractor log.StreamSampleExtractor) iter.SampleIterator
+}
+
+type Appender interface {
+	Append(t int64, v []byte)
+}
+
+type Iterator interface {
+	// Next advances the iterator by one.
+	Next() bool
+
+	// Seek advances the iterator forward to the first sample with the timestamp equal or greater than t.
+	// If current sample found by previous `Next` or `Seek` operation already has this property, Seek has no effect.
+	// Seek returns true, if such sample exists, false otherwise.
+	// Iterator is exhausted when the Seek returns false.
+	Seek(t int64) bool
+
+	// At returns the current timestamp/value pair.
+	// Before the iterator has advanced At behaviour is unspecified.
+	At() (int64, []byte)
+	// Err returns the current error. It should be used only after iterator is
+	// exhausted, that is `Next` or `Seek` returns false.
+	Err() error
+}
+
+// NewNopIterator returns a new chunk iterator that does not hold any data.
+func NewNopIterator() Iterator {
+	return nopIterator{}
+}
+
+type nopIterator struct{}
+
+func (nopIterator) Seek(int64) bool     { return false }
+func (nopIterator) At() (int64, []byte) { return math.MinInt64, nil }
+func (nopIterator) Next() bool          { return false }
+func (nopIterator) Err() error          { return nil }
+
+// Pool is used to create and reuse chunk references to avoid allocations.
+type Pool interface {
+	Put(Chunk) error
+	Get(e Encoding, b []byte) (Chunk, error)
+}
+
+// pool is a memory pool of chunk objects.
+type chunkPool struct {
+	chunks sync.Pool
+}
+
+// NewPool returns a new pool.
+func NewPool() Pool {
+	return &chunkPool{
+		chunks: sync.Pool{
+			New: func() interface{} {
+				return NewMemChunk(EncSnappy, DefaultBlockSize, DefaultTargetSize)
+			},
+		},
+	}
+}
+
+func (p *chunkPool) Get(e Encoding, b []byte) (Chunk, error) {
+	c := p.chunks.Get().(*MemChunk)
+	return c, nil
+}
+
+func (p *chunkPool) Put(c Chunk) error {
+	return nil
 }
