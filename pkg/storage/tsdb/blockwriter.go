@@ -21,7 +21,7 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	logenc "github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
@@ -99,7 +99,7 @@ func (w *BlockWriter) Flush(ctx context.Context) (ulid.ULID, error) {
 		nil,
 		w.logger,
 		[]int64{w.blockSize},
-		logenc.NewPool())
+		chunkenc.NewPool())
 	if err != nil {
 		return ulid.ULID{}, errors.Wrap(err, "create leveled compactor")
 	}

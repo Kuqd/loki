@@ -30,19 +30,20 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	logenc "github.com/grafana/loki/pkg/chunkenc"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/storage"
 	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	_ "github.com/prometheus/prometheus/tsdb/goversion" // Load the package into main to make sure minium Go version is met.
 	"github.com/prometheus/prometheus/tsdb/wal"
+
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/storage"
 )
 
 const (
@@ -157,7 +158,7 @@ type DB struct {
 	logger         log.Logger
 	metrics        *dbMetrics
 	opts           *Options
-	chunkPool      logenc.Pool
+	chunkPool      chunkenc.Pool
 	compactor      Compactor
 	blocksToDelete BlocksToDeleteFunc
 
@@ -367,7 +368,7 @@ func (db *DBReadOnly) FlushWAL(dir string) (returnErr error) {
 		nil,
 		db.logger,
 		ExponentialBlockRanges(DefaultOptions().MinBlockDuration, 3, 5),
-		logenc.NewPool(),
+		chunkenc.NewPool(),
 	)
 	if err != nil {
 		return errors.Wrap(err, "create leveled compactor")
@@ -611,7 +612,7 @@ func open(dir string, l log.Logger, r prometheus.Registerer, opts *Options, rngs
 		donec:          make(chan struct{}),
 		stopc:          make(chan struct{}),
 		autoCompact:    true,
-		chunkPool:      logenc.NewPool(),
+		chunkPool:      chunkenc.NewPool(),
 		blocksToDelete: opts.BlocksToDelete,
 	}
 	defer func() {
@@ -1095,7 +1096,7 @@ func (db *DB) reloadBlocks() (err error) {
 	return nil
 }
 
-func openBlocks(l log.Logger, dir string, loaded []*Block, chunkPool logenc.Pool) (blocks []*Block, corrupted map[ulid.ULID]error, err error) {
+func openBlocks(l log.Logger, dir string, loaded []*Block, chunkPool chunkenc.Pool) (blocks []*Block, corrupted map[ulid.ULID]error, err error) {
 	bDirs, err := blockDirs(dir)
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "find blocks")
@@ -1526,10 +1527,6 @@ func (db *DB) ChunkQuerier(_ context.Context, mint, maxt int64) (storage.ChunkQu
 	}
 
 	return storage.NewMergeChunkQuerier(blockQueriers, nil, storage.NewCompactingChunkSeriesMerger(storage.ChainedSeriesMerge)), nil
-}
-
-func (db *DB) ExemplarQuerier(ctx context.Context) (storage.ExemplarQuerier, error) {
-	return db.head.exemplars.ExemplarQuerier(ctx)
 }
 
 func rangeForTimestamp(t int64, width int64) (maxt int64) {

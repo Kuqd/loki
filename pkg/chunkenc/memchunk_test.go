@@ -1133,12 +1133,13 @@ func TestMemChunk_Rebound(t *testing.T) {
 
 				require.Equal(t, originalChunkItr.Entry(), newChunkItr.Entry())
 			}
+
 		})
 	}
 }
 
 func buildTestMemChunk(t *testing.T, from, through time.Time) *MemChunk {
-	chk := NewMemChunk(EncGZIP, DefaultBlockSize, 0)
+	chk := NewMemChunk(EncGZIP, defaultBlockSize, 0)
 	for ; from.Before(through); from = from.Add(time.Second) {
 		err := chk.Append(&logproto.Entry{
 			Line:      from.String(),

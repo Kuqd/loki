@@ -39,6 +39,7 @@ func (e *Encbuf) Len() int    { return len(e.B) }
 
 func (e *Encbuf) PutString(s string) { e.B = append(e.B, s...) }
 func (e *Encbuf) PutByte(c byte)     { e.B = append(e.B, c) }
+func (e *Encbuf) PutBytes(c []byte)  { e.B = append(e.B, c...) }
 
 func (e *Encbuf) PutBE32int(x int)      { e.PutBE32(uint32(x)) }
 func (e *Encbuf) PutUvarint32(x uint32) { e.PutUvarint64(uint64(x)) }
@@ -120,7 +121,6 @@ func NewDecbufAt(bs ByteSlice, off int, castagnoliTable *crc32.Table) Decbuf {
 	dec := Decbuf{B: b[:len(b)-4]}
 
 	if castagnoliTable != nil {
-
 		if exp := binary.BigEndian.Uint32(b[len(b)-4:]); dec.Crc32(castagnoliTable) != exp {
 			return Decbuf{E: ErrInvalidChecksum}
 		}
@@ -265,6 +265,19 @@ func (d *Decbuf) Byte() byte {
 	}
 	x := d.B[0]
 	d.B = d.B[1:]
+	return x
+}
+
+func (d *Decbuf) Bytes(size int) []byte {
+	if d.E != nil {
+		return nil
+	}
+	if len(d.B) < size {
+		d.E = ErrInvalidSize
+		return nil
+	}
+	x := d.B[:size]
+	d.B = d.B[size:]
 	return x
 }
 

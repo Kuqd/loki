@@ -1,7 +1,6 @@
 package tsdb
 
 import (
-	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
 )
@@ -15,12 +14,17 @@ type LogAppender interface {
 	// to Append() at any point. Adding the sample via Append() returns a new
 	// reference number.
 	// If the reference is 0 it must not be used for caching.
-	AppendLog(ref uint64, l labels.Labels, t int64, line []byte) (uint64, error)
+	Append(ref uint64, l labels.Labels, t int64, line []byte) (uint64, error)
 
-	storage.Appender
-}
+	// Commit submits the collected samples and purges the batch. If Commit
+	// returns a non-nil error, it also rolls back all modifications made in
+	// the appender so far, as Rollback would do. In any case, an Appender
+	// must not be used anymore after Commit has been called.
+	Commit() error
 
-type LogChunkAppender interface {
-	chunkenc.Appender
-	AppendLog(t int64, v []byte)
+	// Rollback rolls back all modifications made in the appender so far.
+	// Appender has to be discarded after rollback.
+	Rollback() error
+
+	storage.ExemplarAppender
 }

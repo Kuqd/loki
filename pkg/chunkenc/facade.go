@@ -43,21 +43,20 @@ func NewFacade(c Chunk, blockSize, targetSize int) encoding.Chunk {
 
 // Marshal implements encoding.Chunk.
 func (f Facade) Marshal(w io.Writer) error {
-	// if f.c == nil {
-	// 	return nil
-	// }
-	// if _, err := f.c.WriteTo(w); err != nil {
-	// 	return err
-	// }
+	if f.c == nil {
+		return nil
+	}
+	if _, err := f.c.WriteTo(w); err != nil {
+		return err
+	}
 	return nil
 }
 
 // UnmarshalFromBuf implements encoding.Chunk.
 func (f *Facade) UnmarshalFromBuf(buf []byte) error {
-	// var err error
-	// f.c, err = NewByteChunk(buf, f.blockSize, f.targetSize)
-	// return err
-	return nil
+	var err error
+	f.c, err = NewByteChunk(buf, f.blockSize, f.targetSize)
+	return err
 }
 
 // Encoding implements encoding.Chunk.
@@ -70,7 +69,7 @@ func (f Facade) Utilization() float64 {
 	if f.c == nil {
 		return 0
 	}
-	return 0
+	return f.c.Utilization()
 }
 
 // Size implements encoding.Chunk.
@@ -78,7 +77,7 @@ func (f Facade) Size() int {
 	if f.c == nil {
 		return 0
 	}
-	return 0
+	return f.c.Size()
 }
 
 // LokiChunk returns the chunkenc.Chunk.
@@ -87,7 +86,13 @@ func (f Facade) LokiChunk() Chunk {
 }
 
 func (f Facade) Rebound(start, end model.Time) (encoding.Chunk, error) {
-	return nil, nil
+	newChunk, err := f.c.Rebound(start.Time(), end.Time())
+	if err != nil {
+		return nil, err
+	}
+	return &Facade{
+		c: newChunk,
+	}, nil
 }
 
 // UncompressedSize is a helper function to hide the type assertion kludge when wanting the uncompressed size of the Cortex interface encoding.Chunk.
@@ -98,5 +103,5 @@ func UncompressedSize(c encoding.Chunk) (int, bool) {
 		return 0, false
 	}
 
-	return 0, true
+	return f.c.UncompressedSize(), true
 }

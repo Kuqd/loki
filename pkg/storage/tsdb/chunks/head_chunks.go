@@ -26,10 +26,10 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
 
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 )
@@ -42,11 +42,9 @@ const (
 	headChunksFormatV1 = 1
 )
 
-var (
-	// ErrChunkDiskMapperClosed returned by any method indicates
-	// that the ChunkDiskMapper was closed.
-	ErrChunkDiskMapperClosed = errors.New("ChunkDiskMapper closed")
-)
+// ErrChunkDiskMapperClosed returned by any method indicates
+// that the ChunkDiskMapper was closed.
+var ErrChunkDiskMapperClosed = errors.New("ChunkDiskMapper closed")
 
 const (
 	// MintMaxtSize is the size of the mint/maxt for head chunk file and chunks.

@@ -31,7 +31,7 @@ import (
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 
-	logenc "github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 )
 
 // Segment header fields constants.
@@ -62,7 +62,7 @@ type Meta struct {
 	// When it is a reference it is the segment offset at which the chunk bytes start.
 	// Generally, only one of them is set.
 	Ref   uint64
-	Chunk logenc.Chunk
+	Chunk chunkenc.Chunk
 
 	// Time range the data covers.
 	// When MaxTime == math.MaxInt64 the chunk is still open and being appended to.
@@ -426,10 +426,10 @@ type Reader struct {
 	bs   []ByteSlice
 	cs   []io.Closer // Closers for resources behind the byte slices.
 	size int64       // The total size of bytes in the reader.
-	pool logenc.Pool
+	pool chunkenc.Pool
 }
 
-func newReader(bs []ByteSlice, cs []io.Closer, pool logenc.Pool) (*Reader, error) {
+func newReader(bs []ByteSlice, cs []io.Closer, pool chunkenc.Pool) (*Reader, error) {
 	cr := Reader{pool: pool, bs: bs, cs: cs}
 	for i, b := range cr.bs {
 		if b.Len() < SegmentHeaderSize {
@@ -451,13 +451,13 @@ func newReader(bs []ByteSlice, cs []io.Closer, pool logenc.Pool) (*Reader, error
 
 // NewDirReader returns a new Reader against sequentially numbered files in the
 // given directory.
-func NewDirReader(dir string, pool logenc.Pool) (*Reader, error) {
+func NewDirReader(dir string, pool chunkenc.Pool) (*Reader, error) {
 	files, err := sequenceFiles(dir)
 	if err != nil {
 		return nil, err
 	}
 	if pool == nil {
-		pool = logenc.NewPool()
+		pool = chunkenc.NewPool()
 	}
 
 	var (
@@ -496,7 +496,7 @@ func (s *Reader) Size() int64 {
 }
 
 // Chunk returns a chunk from a given reference.
-func (s *Reader) Chunk(ref uint64) (logenc.Chunk, error) {
+func (s *Reader) Chunk(ref uint64) (chunkenc.Chunk, error) {
 	var (
 		// Get the upper 4 bytes.
 		// These contain the segment index.
@@ -544,7 +544,7 @@ func (s *Reader) Chunk(ref uint64) (logenc.Chunk, error) {
 
 	chkData := sgmBytes.Range(chkDataStart, chkDataEnd)
 	chkEnc := sgmBytes.Range(chkEncStart, chkEncStart+ChunkEncodingSize)[0]
-	return s.pool.Get(logenc.Encoding(chkEnc), chkData)
+	return s.pool.Get(chunkenc.Encoding(chkEnc), chkData)
 }
 
 func nextSequenceFile(dir string) (string, int, error) {

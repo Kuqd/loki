@@ -22,14 +22,14 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
+	prom_storage "github.com/prometheus/prometheus/storage"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 
-	logenc "github.com/grafana/loki/pkg/chunkenc"
-	"github.com/grafana/loki/storage/tsdb/chunks"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunks"
+	"github.com/grafana/loki/pkg/storage/tsdb/storage"
 )
 
 // Bitmap used by func isRegexMetaCharacter to check whether a character needs to be escaped.
@@ -388,7 +388,7 @@ func labelValuesWithMatchers(r IndexReader, name string, matchers ...*labels.Mat
 	for p.Next() {
 		v, err := r.LabelValueFor(p.At(), name)
 		if err != nil {
-			if err == storage.ErrNotFound {
+			if err == prom_storage.ErrNotFound {
 				continue
 			}
 
@@ -431,7 +431,7 @@ func (b *blockBaseSeriesSet) Next() bool {
 	for b.p.Next() {
 		if err := b.index.Series(b.p.At(), &b.bufLbls, &b.bufChks); err != nil {
 			// Postings may be stale. Skip if no underlying series exists.
-			if errors.Cause(err) == storage.ErrNotFound {
+			if errors.Cause(err) == prom_storage.ErrNotFound {
 				continue
 			}
 			b.err = errors.Wrapf(err, "get series %d", b.p.At())
@@ -633,7 +633,7 @@ func (p *populateWithDelSeriesIterator) Seek(t int64) bool {
 	return false
 }
 
-func (p *populateWithDelSeriesIterator) At() (int64, float64) { return p.curr.At() }
+func (p *populateWithDelSeriesIterator) At() (int64, []byte) { return p.curr.At() }
 
 func (p *populateWithDelSeriesIterator) Err() error {
 	if err := p.populateWithDelGenericSeriesIterator.Err(); err != nil {
@@ -662,7 +662,7 @@ func (p *populateWithDelChunkSeriesIterator) Next() bool {
 	}
 
 	// Re-encode the chunk if iterator is provider. This means that it has some samples to be deleted or chunk is opened.
-	newChunk := chunkenc.NewXORChunk()
+	newChunk := chunkenc.NewMemChunk()
 	app, err := newChunk.Appender()
 	if err != nil {
 		p.err = err
@@ -817,7 +817,7 @@ type DeletedIterator struct {
 	Intervals tombstones.Intervals
 }
 
-func (it *DeletedIterator) At() (int64, float64) {
+func (it *DeletedIterator) At() (int64, []byte) {
 	return it.Iter.At()
 }
 
@@ -872,15 +872,15 @@ Outer:
 func (it *DeletedIterator) Err() error { return it.Iter.Err() }
 
 type nopChunkReader struct {
-	emptyChunk logenc.Chunk
+	emptyChunk chunkenc.Chunk
 }
 
 func newNopChunkReader() ChunkReader {
 	return nopChunkReader{
-		emptyChunk: logenc.NewMemChunk(logenc.EncSnappy, logenc.DefaultBlockSize, logenc.DefaultTargetSize),
+		emptyChunk: chunkenc.NewMemChunk(),
 	}
 }
 
-func (cr nopChunkReader) Chunk(ref uint64) (logenc.Chunk, error) { return cr.emptyChunk, nil }
+func (cr nopChunkReader) Chunk(ref uint64) (chunkenc.Chunk, error) { return cr.emptyChunk, nil }
 
 func (cr nopChunkReader) Close() error { return nil }

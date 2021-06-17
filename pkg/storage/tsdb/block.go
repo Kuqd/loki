@@ -25,7 +25,6 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	logenc "github.com/grafana/loki/pkg/chunkenc"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/prometheus/prometheus/tsdb/fileutil"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 	"github.com/grafana/loki/pkg/storage/tsdb/chunks"
 	"github.com/grafana/loki/pkg/storage/tsdb/index"
 )
@@ -113,7 +113,7 @@ type ChunkWriter interface {
 // ChunkReader provides reading access of serialized time series data.
 type ChunkReader interface {
 	// Chunk returns the series data chunk with the given reference.
-	Chunk(ref uint64) (logenc.Chunk, error)
+	Chunk(ref uint64) (chunkenc.Chunk, error)
 
 	// Close releases all underlying resources of the reader.
 	Close() error
@@ -277,7 +277,7 @@ type Block struct {
 
 // OpenBlock opens the block in the directory. It can be passed a chunk pool, which is used
 // to instantiate chunk structs.
-func OpenBlock(logger log.Logger, dir string, pool logenc.Pool) (pb *Block, err error) {
+func OpenBlock(logger log.Logger, dir string, pool chunkenc.Pool) (pb *Block, err error) {
 	if logger == nil {
 		logger = log.NewNopLogger()
 	}

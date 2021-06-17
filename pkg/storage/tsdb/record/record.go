@@ -21,8 +21,9 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/prometheus/prometheus/pkg/labels"
-	"github.com/prometheus/prometheus/tsdb/encoding"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
+
+	"github.com/grafana/loki/pkg/storage/tsdb/encoding"
 )
 
 // Type represents the data type of a record.
@@ -41,10 +42,8 @@ const (
 	Exemplars Type = 4
 )
 
-var (
-	// ErrNotFound is returned if a looked up resource was not found. Duplicate ErrNotFound from head.go.
-	ErrNotFound = errors.New("not found")
-)
+// ErrNotFound is returned if a looked up resource was not found. Duplicate ErrNotFound from head.go.
+var ErrNotFound = errors.New("not found")
 
 // RefSeries is the series labels with the series ID.
 type RefSeries struct {
@@ -56,7 +55,7 @@ type RefSeries struct {
 type RefSample struct {
 	Ref uint64
 	T   int64
-	V   float64
+	V   []byte
 }
 
 // RefExemplar is an exemplar with it's labels, timestamp, value the exemplar was collected/observed with, and a reference to a series.
@@ -69,8 +68,7 @@ type RefExemplar struct {
 
 // Decoder decodes series, sample, and tombstone records.
 // The zero value is ready to use.
-type Decoder struct {
-}
+type Decoder struct{}
 
 // Type returns the type of the record.
 // Returns RecordUnknown if no valid record type is found.
@@ -134,12 +132,12 @@ func (d *Decoder) Samples(rec []byte, samples []RefSample) ([]RefSample, error) 
 	for len(dec.B) > 0 && dec.Err() == nil {
 		dref := dec.Varint64()
 		dtime := dec.Varint64()
-		val := dec.Be64()
+		size := dec.Varint64()
 
 		samples = append(samples, RefSample{
 			Ref: uint64(int64(baseRef) + dref),
 			T:   baseTime + dtime,
-			V:   math.Float64frombits(val),
+			V:   dec.Bytes(int(size)),
 		})
 	}
 
@@ -220,8 +218,7 @@ func (d *Decoder) Exemplars(rec []byte, exemplars []RefExemplar) ([]RefExemplar,
 
 // Encoder encodes series, sample, and tombstones records.
 // The zero value is ready to use.
-type Encoder struct {
-}
+type Encoder struct{}
 
 // Series appends the encoded series to b and returns the resulting slice.
 func (e *Encoder) Series(series []RefSeries, b []byte) []byte {
@@ -259,7 +256,8 @@ func (e *Encoder) Samples(samples []RefSample, b []byte) []byte {
 	for _, s := range samples {
 		buf.PutVarint64(int64(s.Ref) - int64(first.Ref))
 		buf.PutVarint64(s.T - first.T)
-		buf.PutBE64(math.Float64bits(s.V))
+		buf.PutVarint64(int64(len(s.V)))
+		buf.PutBytes(s.V)
 	}
 	return buf.Get()
 }

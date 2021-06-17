@@ -19,14 +19,14 @@ import (
 	"path/filepath"
 
 	"github.com/go-kit/kit/log"
-
-	"github.com/prometheus/prometheus/storage"
+	"github.com/grafana/loki/pkg/logproto"
+	"github.com/grafana/loki/pkg/logql"
 )
 
 var ErrInvalidTimes = fmt.Errorf("max time is lesser than min time")
 
 // CreateBlock creates a chunkrange block from the samples passed to it, and writes it to disk.
-func CreateBlock(series []storage.Series, dir string, chunkRange int64, logger log.Logger) (string, error) {
+func CreateBlock(series []logproto.Stream, dir string, chunkRange int64, logger log.Logger) (string, error) {
 	if chunkRange == 0 {
 		chunkRange = DefaultBlockDuration
 	}
@@ -49,17 +49,16 @@ func CreateBlock(series []storage.Series, dir string, chunkRange int64, logger l
 
 	for _, s := range series {
 		ref := uint64(0)
-		it := s.Iterator()
-		lset := s.Labels()
-		for it.Next() {
-			t, v := it.At()
-			ref, err = app.Append(ref, lset, t, v)
+
+		lset, err := logql.ParseLabels(s.Labels)
+		if err != nil {
+			return "", err
+		}
+		for _, e := range s.Entries {
+			ref, err = app.Append(ref, lset, e.Timestamp.UnixNano(), []byte(e.Line))
 			if err != nil {
 				return "", err
 			}
-		}
-		if it.Err() != nil {
-			return "", it.Err()
 		}
 	}
 

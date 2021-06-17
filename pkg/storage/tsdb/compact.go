@@ -26,17 +26,18 @@ import (
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
-	logenc "github.com/grafana/loki/pkg/chunkenc"
 	"github.com/oklog/ulid"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunks"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
 	"github.com/prometheus/prometheus/tsdb/fileutil"
-	"github.com/prometheus/prometheus/tsdb/index"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
+
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunks"
+	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/tsdb/storage"
 )
 
 // ExponentialBlockRanges returns the time ranges based on the stepSize.
@@ -79,7 +80,7 @@ type LeveledCompactor struct {
 	metrics                  *compactorMetrics
 	logger                   log.Logger
 	ranges                   []int64
-	chunkPool                logenc.Pool
+	chunkPool                chunkenc.Pool
 	ctx                      context.Context
 	maxBlockChunkSegmentSize int64
 }
@@ -145,16 +146,16 @@ func newCompactorMetrics(r prometheus.Registerer) *compactorMetrics {
 }
 
 // NewLeveledCompactor returns a LeveledCompactor.
-func NewLeveledCompactor(ctx context.Context, r prometheus.Registerer, l log.Logger, ranges []int64, pool logenc.Pool) (*LeveledCompactor, error) {
+func NewLeveledCompactor(ctx context.Context, r prometheus.Registerer, l log.Logger, ranges []int64, pool chunkenc.Pool) (*LeveledCompactor, error) {
 	return NewLeveledCompactorWithChunkSize(ctx, r, l, ranges, pool, chunks.DefaultChunkSegmentSize)
 }
 
-func NewLeveledCompactorWithChunkSize(ctx context.Context, r prometheus.Registerer, l log.Logger, ranges []int64, pool logenc.Pool, maxBlockChunkSegmentSize int64) (*LeveledCompactor, error) {
+func NewLeveledCompactorWithChunkSize(ctx context.Context, r prometheus.Registerer, l log.Logger, ranges []int64, pool chunkenc.Pool, maxBlockChunkSegmentSize int64) (*LeveledCompactor, error) {
 	if len(ranges) == 0 {
 		return nil, errors.Errorf("at least one range must be provided")
 	}
 	if pool == nil {
-		pool = logenc.NewPool()
+		pool = chunkenc.NewPool()
 	}
 	if l == nil {
 		l = log.NewNopLogger()

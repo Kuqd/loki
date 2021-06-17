@@ -33,15 +33,14 @@ import (
 	"github.com/prometheus/prometheus/pkg/exemplar"
 	"github.com/prometheus/prometheus/pkg/labels"
 	"github.com/prometheus/prometheus/storage"
-	"github.com/prometheus/prometheus/tsdb/chunkenc"
 	tsdb_errors "github.com/prometheus/prometheus/tsdb/errors"
-	"github.com/prometheus/prometheus/tsdb/index"
-	"github.com/prometheus/prometheus/tsdb/record"
 	"github.com/prometheus/prometheus/tsdb/tombstones"
 	"github.com/prometheus/prometheus/tsdb/wal"
 
-	logenc "github.com/grafana/loki/pkg/chunkenc"
+	"github.com/grafana/loki/pkg/storage/tsdb/chunkenc"
 	"github.com/grafana/loki/pkg/storage/tsdb/chunks"
+	"github.com/grafana/loki/pkg/storage/tsdb/index"
+	"github.com/grafana/loki/pkg/storage/tsdb/record"
 )
 
 var (
@@ -114,7 +113,7 @@ type HeadOptions struct {
 	ChunkRange int64
 	// ChunkDirRoot is the parent directory of the chunks directory.
 	ChunkDirRoot         string
-	ChunkPool            logenc.Pool
+	ChunkPool            chunkenc.Pool
 	ChunkWriteBufferSize int
 	// StripeSize sets the number of entries in the hash map, it must be a power of 2.
 	// A larger StripeSize will allocate more memory up-front, but will increase performance when handling a large number of series.
@@ -370,7 +369,7 @@ func NewHead(r prometheus.Registerer, l log.Logger, wal *wal.WAL, opts *HeadOpti
 	h.metrics = newHeadMetrics(h, r)
 
 	if opts.ChunkPool == nil {
-		opts.ChunkPool = logenc.NewPool()
+		opts.ChunkPool = chunkenc.NewPool()
 	}
 
 	h.chunkDiskMapper, err = chunks.NewChunkDiskMapper(
@@ -1127,7 +1126,7 @@ type initAppender struct {
 	head *Head
 }
 
-func (a *initAppender) Append(ref uint64, lset labels.Labels, t int64, v float64) (uint64, error) {
+func (a *initAppender) Append(ref uint64, lset labels.Labels, t int64, v []byte) (uint64, error) {
 	if a.app != nil {
 		return a.app.Append(ref, lset, t, v)
 	}
@@ -1152,18 +1151,6 @@ func (a *initAppender) AppendExemplar(ref uint64, l labels.Labels, e exemplar.Ex
 	a.app = a.head.appender()
 
 	return a.app.AppendExemplar(ref, l, e)
-}
-
-func (a *initAppender) AppendLog(ref uint64, l labels.Labels, t int64, v []byte) (uint64, error) {
-	if a.app != nil {
-		return a.app.AppendLog(ref, l, t, v)
-	}
-	// We should never reach here given we would call Append before AppendExemplar
-	// and we probably want to always base head/WAL min time on sample times.
-	a.head.initTime(t)
-	a.app = a.head.appender()
-
-	return a.app.AppendLog(ref, l, t, v)
 }
 
 var _ storage.GetRef = &initAppender{}
@@ -1261,17 +1248,17 @@ func (h *Head) getAppendBuffer() []record.RefSample {
 	return b.([]record.RefSample)
 }
 
-func (h *Head) putAppendLogBuffer(b []record.RefLog) {
+func (h *Head) putAppendLogBuffer(b []record.RefSample) {
 	//nolint:staticcheck // Ignore SA6002 safe to ignore and actually fixing it has some performance penalty.
 	h.appendPool.Put(b[:0])
 }
 
-func (h *Head) getAppendLogBuffer() []record.RefLog {
+func (h *Head) getAppendLogBuffer() []record.RefSample {
 	b := h.appendPool.Get()
 	if b == nil {
-		return make([]record.RefLog, 0, 512)
+		return make([]record.RefSample, 0, 512)
 	}
-	return b.([]record.RefLog)
+	return b.([]record.RefSample)
 }
 
 func (h *Head) putAppendBuffer(b []record.RefSample) {
@@ -1335,7 +1322,7 @@ type headAppender struct {
 
 	series       []record.RefSeries
 	samples      []record.RefSample
-	logentries   []record.RefLog
+	logentries   []record.RefSample
 	exemplars    []exemplarWithSeriesRef
 	sampleSeries []*memSeries
 
@@ -1343,7 +1330,7 @@ type headAppender struct {
 	closed                          bool
 }
 
-func (a *headAppender) Append(ref uint64, lset labels.Labels, t int64, v float64) (uint64, error) {
+func (a *headAppender) Append(ref uint64, lset labels.Labels, t int64, v []byte) (uint64, error) {
 	if t < a.minValidTime {
 		a.head.metrics.outOfBoundSamples.Inc()
 		return 0, storage.ErrOutOfBounds
@@ -1394,65 +1381,6 @@ func (a *headAppender) Append(ref uint64, lset labels.Labels, t int64, v float64
 	}
 
 	a.samples = append(a.samples, record.RefSample{
-		Ref: s.ref,
-		T:   t,
-		V:   v,
-	})
-	a.sampleSeries = append(a.sampleSeries, s)
-	return s.ref, nil
-}
-
-func (a *headAppender) AppendLog(ref uint64, lset labels.Labels, t int64, v []byte) (uint64, error) {
-	if t < a.minValidTime {
-		a.head.metrics.outOfBoundSamples.Inc()
-		return 0, storage.ErrOutOfBounds
-	}
-
-	s := a.head.series.getByID(ref)
-	if s == nil {
-		// Ensure no empty labels have gotten through.
-		lset = lset.WithoutEmpty()
-		if len(lset) == 0 {
-			return 0, errors.Wrap(ErrInvalidSample, "empty labelset")
-		}
-
-		if l, dup := lset.HasDuplicateLabelNames(); dup {
-			return 0, errors.Wrap(ErrInvalidSample, fmt.Sprintf(`label name "%s" is not unique`, l))
-		}
-
-		var created bool
-		var err error
-		s, created, err = a.head.getOrCreate(lset.Hash(), lset)
-		if err != nil {
-			return 0, err
-		}
-		if created {
-			a.series = append(a.series, record.RefSeries{
-				Ref:    s.ref,
-				Labels: lset,
-			})
-		}
-	}
-
-	s.Lock()
-	if err := s.appendable(t, 0); err != nil {
-		s.Unlock()
-		if err == storage.ErrOutOfOrderSample {
-			a.head.metrics.outOfOrderSamples.Inc()
-		}
-		return 0, err
-	}
-	s.pendingCommit = true
-	s.Unlock()
-
-	if t < a.mint {
-		a.mint = t
-	}
-	if t > a.maxt {
-		a.maxt = t
-	}
-
-	a.logentries = append(a.logentries, record.RefLog{
 		Ref: s.ref,
 		T:   t,
 		V:   v,
@@ -1855,7 +1783,7 @@ func unpackChunkID(id uint64) (seriesID, chunkID uint64) {
 }
 
 // Chunk returns the chunk for the reference number.
-func (h *headChunkReader) Chunk(ref uint64) (logenc.Chunk, error) {
+func (h *headChunkReader) Chunk(ref uint64) (chunkenc.Chunk, error) {
 	sid, cid := unpackChunkID(ref)
 
 	s := h.head.series.getByID(sid)
@@ -1895,14 +1823,14 @@ func (h *headChunkReader) Chunk(ref uint64) (logenc.Chunk, error) {
 }
 
 type safeChunk struct {
-	logenc.Chunk
+	chunkenc.Chunk
 	s               *memSeries
 	cid             int
 	isoState        *isolationState
 	chunkDiskMapper *chunks.ChunkDiskMapper
 }
 
-func (c *safeChunk) Iterator(reuseIter logenc.Iterator) logenc.Iterator {
+func (c *safeChunk) Iterator(reuseIter chunkenc.Iterator) chunkenc.Iterator {
 	c.s.Lock()
 	it := c.s.iterator(c.cid, c.isoState, c.chunkDiskMapper, reuseIter)
 	c.s.Unlock()
@@ -2338,10 +2266,9 @@ type memSeries struct {
 
 	nextAt        int64 // Timestamp at which to cut the next chunk.
 	sampleBuf     [4]sample
-	logBuf        [4]log
 	pendingCommit bool // Whether there are samples waiting to be committed to this series.
 
-	app LogChunkAppender // Current appender for the chunk.
+	app chunkenc.Appender // Current appender for the chunk.
 
 	memChunkPool *sync.Pool
 
@@ -2382,7 +2309,7 @@ func (s *memSeries) cutNewHeadChunk(mint int64, chunkDiskMapper *chunks.ChunkDis
 	s.mmapCurrentHeadChunk(chunkDiskMapper)
 
 	s.headChunk = &memChunk{
-		chunk:   logenc.NewMemChunk(logenc.EncSnappy, logenc.DefaultBlockSize, logenc.DefaultTargetSize),
+		chunk:   chunkenc.NewMemChunk(),
 		minTime: mint,
 		maxTime: math.MinInt64,
 	}
@@ -2420,7 +2347,7 @@ func (s *memSeries) mmapCurrentHeadChunk(chunkDiskMapper *chunks.ChunkDiskMapper
 }
 
 // appendable checks whether the given sample is valid for appending to the series.
-func (s *memSeries) appendable(t int64, v float64) error {
+func (s *memSeries) appendable(t int64, v []byte) error {
 	c := s.head()
 	if c == nil {
 		return nil
@@ -2432,11 +2359,12 @@ func (s *memSeries) appendable(t int64, v float64) error {
 	if t < c.maxTime {
 		return storage.ErrOutOfOrderSample
 	}
-	// We are allowing exact duplicates as we can encounter them in valid cases
-	// like federation and erroring out at that time would be extremely noisy.
-	if math.Float64bits(s.sampleBuf[3].v) != math.Float64bits(v) {
-		return storage.ErrDuplicateSampleForTimestamp
-	}
+	// todo (cyril tovena) correct this
+	// // We are allowing exact duplicates as we can encounter them in valid cases
+	// // like federation and erroring out at that time would be extremely noisy.
+	// if math.Float64bits(s.sampleBuf[3].v) != math.Float64bits(v) {
+	// 	return storage.ErrDuplicateSampleForTimestamp
+	// }
 	return nil
 }
 
@@ -2505,7 +2433,7 @@ func (s *memSeries) truncateChunksBefore(mint int64) (removed int) {
 // the appendID for isolation. (The appendID can be zero, which results in no
 // isolation for this append.)
 // It is unsafe to call this concurrently with s.iterator(...) without holding the series lock.
-func (s *memSeries) append(t int64, v float64, appendID uint64, chunkDiskMapper *chunks.ChunkDiskMapper) (sampleInOrder, chunkCreated bool) {
+func (s *memSeries) append(t int64, v []byte, appendID uint64, chunkDiskMapper *chunks.ChunkDiskMapper) (sampleInOrder, chunkCreated bool) {
 	// Based on Gorilla white papers this offers near-optimal compression ratio
 	// so anything bigger that this has diminishing returns and increases
 	// the time range within which we have to decompress all samples.
@@ -2554,59 +2482,6 @@ func (s *memSeries) append(t int64, v float64, appendID uint64, chunkDiskMapper 
 	return true, chunkCreated
 }
 
-// append adds the sample (t, v) to the series. The caller also has to provide
-// the appendID for isolation. (The appendID can be zero, which results in no
-// isolation for this append.)
-// It is unsafe to call this concurrently with s.iterator(...) without holding the series lock.
-func (s *memSeries) appendLog(t int64, v []byte, appendID uint64, chunkDiskMapper *chunks.ChunkDiskMapper) (sampleInOrder, chunkCreated bool) {
-	// Based on Gorilla white papers this offers near-optimal compression ratio
-	// so anything bigger that this has diminishing returns and increases
-	// the time range within which we have to decompress all samples.
-	const samplesPerChunk = 120
-
-	c := s.head()
-
-	if c == nil {
-		if len(s.mmappedChunks) > 0 && s.mmappedChunks[len(s.mmappedChunks)-1].maxTime >= t {
-			// Out of order sample. Sample timestamp is already in the mmaped chunks, so ignore it.
-			return false, false
-		}
-		// There is no chunk in this series yet, create the first chunk for the sample.
-		c = s.cutNewHeadChunk(t, chunkDiskMapper)
-		chunkCreated = true
-	}
-	numSamples := c.chunk.NumSamples()
-
-	// Out of order sample.
-	if c.maxTime >= t {
-		return false, chunkCreated
-	}
-	// If we reach 25% of a chunk's desired sample count, set a definitive time
-	// at which to start the next chunk.
-	// At latest it must happen at the timestamp set when the chunk was cut.
-	if numSamples == samplesPerChunk/4 {
-		s.nextAt = computeChunkEndTime(c.minTime, c.maxTime, s.nextAt)
-	}
-	if t >= s.nextAt {
-		c = s.cutNewHeadChunk(t, chunkDiskMapper)
-		chunkCreated = true
-	}
-	s.app.AppendLog(t, v)
-
-	c.maxTime = t
-
-	s.logBuf[0] = s.logBuf[1]
-	s.logBuf[1] = s.logBuf[2]
-	s.logBuf[2] = s.logBuf[3]
-	s.logBuf[3] = log{t: t, v: v}
-
-	if appendID > 0 {
-		s.txs.add(appendID)
-	}
-
-	return true, chunkCreated
-}
-
 // cleanupAppendIDsBelow cleans up older appendIDs. Has to be called after
 // acquiring lock.
 func (s *memSeries) cleanupAppendIDsBelow(bound uint64) {
@@ -2626,14 +2501,14 @@ func computeChunkEndTime(start, cur, max int64) int64 {
 
 // iterator returns a chunk iterator.
 // It is unsafe to call this concurrently with s.append(...) without holding the series lock.
-func (s *memSeries) iterator(id int, isoState *isolationState, chunkDiskMapper *chunks.ChunkDiskMapper, it logenc.Iterator) logenc.Iterator {
+func (s *memSeries) iterator(id int, isoState *isolationState, chunkDiskMapper *chunks.ChunkDiskMapper, it chunkenc.Iterator) chunkenc.Iterator {
 	c, garbageCollect, err := s.chunk(id, chunkDiskMapper)
 	// TODO(fabxc): Work around! An error will be returns when a querier have retrieved a pointer to a
 	// series's chunk, which got then garbage collected before it got
 	// accessed.  We must ensure to not garbage collect as long as any
 	// readers still hold a reference.
 	if err != nil {
-		return logenc.NewNopIterator()
+		return chunkenc.NewNopIterator()
 	}
 	defer func() {
 		if garbageCollect {
@@ -2688,7 +2563,7 @@ func (s *memSeries) iterator(id int, isoState *isolationState, chunkDiskMapper *
 	}
 
 	if stopAfter == 0 {
-		return logenc.NewNopIterator()
+		return chunkenc.NewNopIterator()
 	}
 
 	if id-s.firstChunkID < len(s.mmappedChunks) {
@@ -2733,7 +2608,7 @@ func (s *memSeries) head() *memChunk {
 }
 
 type memChunk struct {
-	chunk            logenc.Chunk
+	chunk            chunkenc.Chunk
 	minTime, maxTime int64
 }
 
@@ -2743,7 +2618,7 @@ func (mc *memChunk) OverlapsClosedInterval(mint, maxt int64) bool {
 }
 
 type stopIterator struct {
-	logenc.Iterator
+	chunkenc.Iterator
 
 	i, stopAfter int
 }
@@ -2791,7 +2666,7 @@ func (it *memSafeIterator) Next() bool {
 	return true
 }
 
-func (it *memSafeIterator) At() (int64, float64) {
+func (it *memSafeIterator) At() (int64, []byte) {
 	if it.total-it.i > 4 {
 		return it.Iterator.At()
 	}
